@@ -10,11 +10,11 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git 'https://github.com/abayomi2/flask-REST-API-CICD.git' // Replace with your Git repo URL
-            }
-        }
+        // stage('Checkout') {
+        //     steps {
+        //         git 'https://github.com/abayomi2/flask-REST-API-CICD.git' // Replace with your Git repo URL
+        //     }
+        // }
 
         stage('Build Docker Image') {
             steps {
