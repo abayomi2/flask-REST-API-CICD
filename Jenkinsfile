@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         AWS_REGION = 'us-east-1' // Your AWS Region
-        EKS_CLUSTER_NAME = 'my-simple-app-cluster' // Matches your Terraform EKS cluster name
+        EKS_CLUSTER_NAME = 'my-dev-eks-cluster' // Matches your Terraform EKS cluster name
         DOCKERHUB_USERNAME = 'abayomi2' // Replace with your Docker Hub username
         DOCKER_IMAGE_NAME = "${env.DOCKERHUB_USERNAME}/my-simple-app" // Your Docker Hub repo: <username>/<imagename>
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
