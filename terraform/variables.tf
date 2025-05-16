@@ -39,3 +39,7 @@ variable "max_node_count" {
   type        = number
   default     = 3
 }
+
+provider "aws" {
+  region = var.aws_region
+}

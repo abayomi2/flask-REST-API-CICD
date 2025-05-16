@@ -4,7 +4,7 @@ pipeline {
     environment {
         AWS_REGION = 'us-east-1' // Your AWS Region
         EKS_CLUSTER_NAME = 'my-simple-app-cluster' // Matches your Terraform EKS cluster name
-        DOCKERHUB_USERNAME = 'your-dockerhub-username' // Replace with your Docker Hub username
+        DOCKERHUB_USERNAME = 'abayomi2' // Replace with your Docker Hub username
         DOCKER_IMAGE_NAME = "${env.DOCKERHUB_USERNAME}/my-simple-app" // Your Docker Hub repo: <username>/<imagename>
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
     }
@@ -12,7 +12,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git 'your-git-repository-url' // Replace with your Git repo URL
+                git 'https://github.com/abayomi2/flask-REST-API-CICD.git' // Replace with your Git repo URL
             }
         }
 

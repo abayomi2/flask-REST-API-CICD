@@ -12,7 +12,7 @@ output "cluster_endpoint" {
 output "cluster_ca_certificate" {
   description = "Base64 encoded certificate data required to communicate with the cluster."
   value       = aws_eks_cluster.eks_cluster.certificate_authority[0].data
-  sensitive   = true # The CA certificate is sensitive data
+  sensitive   = true
 }
 
 output "eks_nodegroup_role_arn" {
@@ -25,7 +25,12 @@ output "default_vpc_id" {
   value       = data.aws_vpc.default.id
 }
 
-output "default_vpc_subnet_ids" {
-  description = "List of subnet IDs from the default VPC used for the EKS cluster and nodes."
-  value       = data.aws_subnets.default_vpc_subnets.ids
+output "filtered_subnet_ids_for_eks" {
+  description = "List of subnet IDs from the default VPC in supported AZs, used for the EKS cluster and nodes."
+  value       = data.aws_subnets.default_vpc_subnets_in_supported_azs.ids
+}
+
+output "number_of_filtered_subnets" {
+  description = "Number of subnets found in supported AZs."
+  value       = length(data.aws_subnets.default_vpc_subnets_in_supported_azs.ids)
 }
