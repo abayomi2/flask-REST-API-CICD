@@ -4,9 +4,10 @@ pipeline {
     environment {
         AWS_REGION         = 'us-east-1'
         EKS_CLUSTER_NAME   = 'my-dev-eks-cluster' // Ensure this matches your Terraform cluster name
-        DOCKERHUB_USERNAME = 'abayomi2'
-        APP_NAME           = 'my-simple-app'
-        // DOCKER_IMAGE_NAME and IMAGE_TAG will be set in the Initialize stage
+        DOCKERHUB_USERNAME = 'abayomi2'           // Your Docker Hub username
+        APP_NAME           = 'my-simple-app'      // Your application name
+        
+        // Declare DOCKER_IMAGE_NAME and IMAGE_TAG here, they will be fully defined in the 'Initialize' stage
         DOCKER_IMAGE_NAME  = '' 
         IMAGE_TAG          = '' 
     }
@@ -15,9 +16,11 @@ pipeline {
         stage('Initialize') {
             steps {
                 script {
+                    // Construct the image tag using the Jenkins provided BUILD_NUMBER
                     env.IMAGE_TAG = "v${env.BUILD_NUMBER}"
+                    // Construct the full Docker image name
                     env.DOCKER_IMAGE_NAME = "${env.DOCKERHUB_USERNAME}/${env.APP_NAME}"
-                    print "Docker Image: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+                    print "INFO: Docker Image to be built and pushed: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
                 }
             }
         }
@@ -27,13 +30,10 @@ pipeline {
         stage('Run Unit Tests') {
             steps {
                 dir('application') { // Navigate into the application directory
-                    // Ensure python3 and pip3 are available on your Jenkins agent
                     sh '''
                         # Create a virtual environment
                         python3 -m venv .venv 
-                        # Activate and use the virtual environment's pip to install dependencies
-                        # Note: Activating a venv in a non-interactive shell script can be tricky.
-                        # It's often easier to directly call the executables from the venv's bin directory.
+                        # Use the virtual environment's pip to install dependencies
                         ./.venv/bin/pip install -r requirements.txt
                         # Run tests using the virtual environment's python
                         ./.venv/bin/python -m unittest discover -v
@@ -46,7 +46,14 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 dir('application') {
-                    sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.DOCKER_IMAGE_NAME}:latest ."
+                    // Ensure DOCKER_IMAGE_NAME and IMAGE_TAG are not null/empty here
+                    script {
+                        if (env.DOCKER_IMAGE_NAME && env.IMAGE_TAG) {
+                            sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.DOCKER_IMAGE_NAME}:latest ."
+                        } else {
+                            error "ERROR: DOCKER_IMAGE_NAME or IMAGE_TAG is not set. Halting build."
+                        }
+                    }
                 }
             }
         }
@@ -61,10 +68,18 @@ pipeline {
 
         stage('Push Docker Image to Docker Hub') {
             steps {
-                sh "docker push ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
-                sh "docker push ${env.DOCKER_IMAGE_NAME}:latest"
-                sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
-                sh "docker rmi ${env.DOCKER_IMAGE_NAME}:latest"
+                // Ensure DOCKER_IMAGE_NAME and IMAGE_TAG are not null/empty here
+                script {
+                    if (env.DOCKER_IMAGE_NAME && env.IMAGE_TAG) {
+                        sh "docker push ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        sh "docker push ${env.DOCKER_IMAGE_NAME}:latest"
+                        // Clean up local images
+                        sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        sh "docker rmi ${env.DOCKER_IMAGE_NAME}:latest"
+                    } else {
+                        error "ERROR: DOCKER_IMAGE_NAME or IMAGE_TAG is not set. Halting push."
+                    }
+                }
             }
         }
 
@@ -78,8 +93,15 @@ pipeline {
 
         stage('Update Kubernetes Manifests') {
             steps {
-                sh "sed -i 's|image:.*|image: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}|g' kubernetes/deployment.yaml"
-                sh "cat kubernetes/deployment.yaml"
+                // Ensure DOCKER_IMAGE_NAME and IMAGE_TAG are not null/empty here
+                script {
+                    if (env.DOCKER_IMAGE_NAME && env.IMAGE_TAG) {
+                        sh "sed -i 's|image:.*|image: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}|g' kubernetes/deployment.yaml"
+                        sh "cat kubernetes/deployment.yaml"
+                    } else {
+                        error "ERROR: DOCKER_IMAGE_NAME or IMAGE_TAG is not set. Halting manifest update."
+                    }
+                }
             }
         }
         
