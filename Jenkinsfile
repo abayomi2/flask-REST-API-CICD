@@ -1,5 +1,5 @@
 pipeline {
-    agent any // Ensure this agent has git, docker, aws-cli, kubectl, and python installed
+    agent any // Ensure this agent has git, docker, aws-cli, kubectl, python, and trivy installed
 
     environment {
         AWS_REGION         = 'us-east-1'
@@ -7,26 +7,19 @@ pipeline {
         DOCKERHUB_USERNAME = 'abayomi2'           // Your Docker Hub username
         APP_NAME           = 'my-simple-app'      // Your application name
         
-        // Define DOCKER_IMAGE_NAME and IMAGE_TAG directly using other env variables
-        // This approach is often more reliable for immediate availability across stages
         IMAGE_TAG          = "v${env.BUILD_NUMBER}"
         DOCKER_IMAGE_NAME  = "${env.DOCKERHUB_USERNAME}/${env.APP_NAME}"
     }
 
     stages {
-        // The 'Initialize' stage has been removed as variables are set globally above.
-
-        // Implicit SCM checkout by Jenkins happens before any stages execute when using "Pipeline script from SCM"
+        // Implicit SCM checkout by Jenkins happens before any stages execute
 
         stage('Run Unit Tests') {
             steps {
-                dir('application') { // Navigate into the application directory
+                dir('application') { 
                     sh '''
-                        # Create a virtual environment
                         python3 -m venv .venv 
-                        # Use the virtual environment's pip to install dependencies
                         ./.venv/bin/pip install -r requirements.txt
-                        # Run tests using the virtual environment's python
                         ./.venv/bin/python -m unittest discover -v
                     '''
                 }
@@ -41,7 +34,6 @@ pipeline {
                         print "INFO: Build Docker Image Stage - Current DOCKER_IMAGE_NAME: '${env.DOCKER_IMAGE_NAME}'"
                         print "INFO: Build Docker Image Stage - Current IMAGE_TAG: '${env.IMAGE_TAG}'"
                         
-                        // More explicit check for null or empty strings
                         if (env.DOCKER_IMAGE_NAME != null && env.DOCKER_IMAGE_NAME.trim() != "" && env.IMAGE_TAG != null && env.IMAGE_TAG.trim() != "") {
                             sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.DOCKER_IMAGE_NAME}:latest ."
                         } else {
@@ -49,6 +41,33 @@ pipeline {
                         }
                     }
                 }
+            }
+        }
+
+        stage('Scan Docker Image with Trivy') { // <<<< NEW STAGE
+            steps {
+                script {
+                    print "INFO: Security Scan Stage - Scanning image: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+                    // Ensure the image is available locally for Trivy to scan (it should be after the build stage)
+                    
+                    // Option 1: Report HIGH and CRITICAL vulnerabilities, but don't fail the build based on findings (for now).
+                    // This allows you to see the vulnerabilities without immediately blocking your pipeline.
+                    // You can adjust --exit-code and --severity later to enforce failure.
+                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --ignore-unfixed --no-progress ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+                    
+                    // Example of how you might fail the build if CRITICAL vulnerabilities are found:
+                    // try {
+                    //     sh "trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+                    // } catch (Exception e) {
+                    //     currentBuild.result = 'FAILURE'
+                    //     error("Trivy scan found CRITICAL vulnerabilities. Failing build. ${e.getMessage()}")
+                    // }
+                    
+                    // To output to a file and archive it (optional):
+                    // sh "trivy image --format json --output trivy-report-${env.BUILD_NUMBER}.json --ignore-unfixed ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+                    // archiveArtifacts artifacts: "trivy-report-${env.BUILD_NUMBER}.json", fingerprint: true
+                }
+                echo "Docker image security scan completed."
             }
         }
 
@@ -68,7 +87,6 @@ pipeline {
                     if (env.DOCKER_IMAGE_NAME != null && env.DOCKER_IMAGE_NAME.trim() != "" && env.IMAGE_TAG != null && env.IMAGE_TAG.trim() != "") {
                         sh "docker push ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
                         sh "docker push ${env.DOCKER_IMAGE_NAME}:latest"
-                        // Clean up local images
                         sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
                         sh "docker rmi ${env.DOCKER_IMAGE_NAME}:latest"
                     } else {
@@ -118,13 +136,145 @@ pipeline {
             sh "command -v docker && docker logout || echo 'Docker command not found, skipping logout'"
         }
         success {
-            echo "Successfully tested, built, and deployed ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} to EKS."
+            echo "Successfully tested, scanned, built, and deployed ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} to EKS."
         }
         failure {
             echo 'Pipeline failed.'
         }
     }
 }
+
+
+
+
+
+// pipeline {
+//     agent any // Ensure this agent has git, docker, aws-cli, kubectl, and python installed
+
+//     environment {
+//         AWS_REGION         = 'us-east-1'
+//         EKS_CLUSTER_NAME   = 'my-dev-eks-cluster' // Ensure this matches your Terraform cluster name
+//         DOCKERHUB_USERNAME = 'abayomi2'           // Your Docker Hub username
+//         APP_NAME           = 'my-simple-app'      // Your application name
+        
+//         // Define DOCKER_IMAGE_NAME and IMAGE_TAG directly using other env variables
+//         // This approach is often more reliable for immediate availability across stages
+//         IMAGE_TAG          = "v${env.BUILD_NUMBER}"
+//         DOCKER_IMAGE_NAME  = "${env.DOCKERHUB_USERNAME}/${env.APP_NAME}"
+//     }
+
+//     stages {
+//         // The 'Initialize' stage has been removed as variables are set globally above.
+
+//         // Implicit SCM checkout by Jenkins happens before any stages execute when using "Pipeline script from SCM"
+
+//         stage('Run Unit Tests') {
+//             steps {
+//                 dir('application') { // Navigate into the application directory
+//                     sh '''
+//                         # Create a virtual environment
+//                         python3 -m venv .venv 
+//                         # Use the virtual environment's pip to install dependencies
+//                         ./.venv/bin/pip install -r requirements.txt
+//                         # Run tests using the virtual environment's python
+//                         ./.venv/bin/python -m unittest discover -v
+//                     '''
+//                 }
+//                 echo "Unit tests completed successfully!"
+//             }
+//         }
+
+//         stage('Build Docker Image') {
+//             steps {
+//                 dir('application') {
+//                     script {
+//                         print "INFO: Build Docker Image Stage - Current DOCKER_IMAGE_NAME: '${env.DOCKER_IMAGE_NAME}'"
+//                         print "INFO: Build Docker Image Stage - Current IMAGE_TAG: '${env.IMAGE_TAG}'"
+                        
+//                         // More explicit check for null or empty strings
+//                         if (env.DOCKER_IMAGE_NAME != null && env.DOCKER_IMAGE_NAME.trim() != "" && env.IMAGE_TAG != null && env.IMAGE_TAG.trim() != "") {
+//                             sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.DOCKER_IMAGE_NAME}:latest ."
+//                         } else {
+//                             error "ERROR: DOCKER_IMAGE_NAME ('${env.DOCKER_IMAGE_NAME}') or IMAGE_TAG ('${env.IMAGE_TAG}') is not properly set. Halting build."
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage('Login to Docker Hub') {
+//             steps {
+//                 withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+//                     sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+//                 }
+//             }
+//         }
+
+//         stage('Push Docker Image to Docker Hub') {
+//             steps {
+//                 script {
+//                     print "INFO: Push Docker Image Stage - Current DOCKER_IMAGE_NAME: '${env.DOCKER_IMAGE_NAME}'"
+//                     print "INFO: Push Docker Image Stage - Current IMAGE_TAG: '${env.IMAGE_TAG}'"
+//                     if (env.DOCKER_IMAGE_NAME != null && env.DOCKER_IMAGE_NAME.trim() != "" && env.IMAGE_TAG != null && env.IMAGE_TAG.trim() != "") {
+//                         sh "docker push ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+//                         sh "docker push ${env.DOCKER_IMAGE_NAME}:latest"
+//                         // Clean up local images
+//                         sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+//                         sh "docker rmi ${env.DOCKER_IMAGE_NAME}:latest"
+//                     } else {
+//                         error "ERROR: DOCKER_IMAGE_NAME ('${env.DOCKER_IMAGE_NAME}') or IMAGE_TAG ('${env.IMAGE_TAG}') is not properly set. Halting push."
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage('Configure Kubectl') {
+//             steps {
+//                 sh "aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER_NAME}"
+//                 sh "kubectl config get-contexts"
+//                 sh "kubectl cluster-info"
+//             }
+//         }
+
+//         stage('Update Kubernetes Manifests') {
+//             steps {
+//                 script {
+//                     print "INFO: Update K8s Manifests Stage - Current DOCKER_IMAGE_NAME: '${env.DOCKER_IMAGE_NAME}'"
+//                     print "INFO: Update K8s Manifests Stage - Current IMAGE_TAG: '${env.IMAGE_TAG}'"
+//                     if (env.DOCKER_IMAGE_NAME != null && env.DOCKER_IMAGE_NAME.trim() != "" && env.IMAGE_TAG != null && env.IMAGE_TAG.trim() != "") {
+//                         sh "sed -i 's|image:.*|image: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}|g' kubernetes/deployment.yaml"
+//                         sh "cat kubernetes/deployment.yaml"
+//                     } else {
+//                         error "ERROR: DOCKER_IMAGE_NAME ('${env.DOCKER_IMAGE_NAME}') or IMAGE_TAG ('${env.IMAGE_TAG}') is not properly set. Halting manifest update."
+//                     }
+//                 }
+//             }
+//         }
+        
+//         stage('Deploy to EKS') {
+//             steps {
+//                 script { 
+//                     sh "kubectl apply -f kubernetes/deployment.yaml"
+//                     sh "kubectl apply -f kubernetes/service.yaml"
+//                     sh "kubectl rollout status deployment/my-simple-app-deployment --namespace default --timeout=2m"
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         always {
+//             echo 'Pipeline finished.'
+//             sh "command -v docker && docker logout || echo 'Docker command not found, skipping logout'"
+//         }
+//         success {
+//             echo "Successfully tested, built, and deployed ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} to EKS."
+//         }
+//         failure {
+//             echo 'Pipeline failed.'
+//         }
+//     }
+// }
 
 
 
