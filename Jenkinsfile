@@ -28,6 +28,7 @@ pipeline {
             steps {
                 dir('application') { // Navigate into the application directory
                     // Ensure python or python3 is available on your Jenkins agent
+                    sh 'pip3 install --user -r requirements.txt' // <<<< NEW LINE: Install dependencies
                     sh 'python3 -m unittest discover -v' 
                     // Using python3 explicitly is often safer.
                     // '-v' for verbose output. 
