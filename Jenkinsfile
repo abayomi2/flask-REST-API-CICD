@@ -12,11 +12,11 @@ pipeline {
     }
 
     stages {
-        stage('Initialize') { // Reinstated this stage
+        stage('Initialize') {
             steps {
                 script {
                     env.IMAGE_TAG = "v${env.BUILD_NUMBER}"
-                    env.DOCKER_IMAGE_NAME = "${env.DOCKERHUB_USERNAME}/${env.APP_NAME}" // Corrected this line from user's version
+                    env.DOCKER_IMAGE_NAME = "${env.DOCKERHUB_USERNAME}/${env.APP_NAME}"
                     print "Docker Image: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
                 }
             }
@@ -24,15 +24,20 @@ pipeline {
 
         // Implicit SCM checkout by Jenkins happens before any stages execute when using "Pipeline script from SCM"
 
-        stage('Run Unit Tests') { // Added this stage
+        stage('Run Unit Tests') {
             steps {
                 dir('application') { // Navigate into the application directory
-                    // Ensure python or python3 is available on your Jenkins agent
-                    sh 'pip3 install --user -r requirements.txt' // <<<< NEW LINE: Install dependencies
-                    sh 'python3 -m unittest discover -v' 
-                    // Using python3 explicitly is often safer.
-                    // '-v' for verbose output. 
-                    // 'discover' will find tests in files named test*.py
+                    // Ensure python3 and pip3 are available on your Jenkins agent
+                    sh '''
+                        # Create a virtual environment
+                        python3 -m venv .venv 
+                        # Activate and use the virtual environment's pip to install dependencies
+                        # Note: Activating a venv in a non-interactive shell script can be tricky.
+                        # It's often easier to directly call the executables from the venv's bin directory.
+                        ./.venv/bin/pip install -r requirements.txt
+                        # Run tests using the virtual environment's python
+                        ./.venv/bin/python -m unittest discover -v
+                    '''
                 }
                 echo "Unit tests completed successfully!"
             }
@@ -41,7 +46,6 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 dir('application') {
-                    // Tag with latest and with a version (build number)
                     sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.DOCKER_IMAGE_NAME}:latest ."
                 }
             }
@@ -59,13 +63,12 @@ pipeline {
             steps {
                 sh "docker push ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
                 sh "docker push ${env.DOCKER_IMAGE_NAME}:latest"
-                // Clean up local images
                 sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
                 sh "docker rmi ${env.DOCKER_IMAGE_NAME}:latest"
             }
         }
 
-        stage('Configure Kubectl') { // Reinstated this stage
+        stage('Configure Kubectl') {
             steps {
                 sh "aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER_NAME}"
                 sh "kubectl config get-contexts"
@@ -75,15 +78,14 @@ pipeline {
 
         stage('Update Kubernetes Manifests') {
             steps {
-                // Replace the image placeholder in deployment.yaml with the Docker Hub image and specific tag
                 sh "sed -i 's|image:.*|image: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}|g' kubernetes/deployment.yaml"
-                sh "cat kubernetes/deployment.yaml" // Good for debugging to see the change
+                sh "cat kubernetes/deployment.yaml"
             }
         }
         
         stage('Deploy to EKS') {
             steps {
-                script { // Using script block for multi-line shell, though direct sh is also fine
+                script { 
                     sh "kubectl apply -f kubernetes/deployment.yaml"
                     sh "kubectl apply -f kubernetes/service.yaml"
                     sh "kubectl rollout status deployment/my-simple-app-deployment --namespace default --timeout=2m"
@@ -95,7 +97,6 @@ pipeline {
     post {
         always {
             echo 'Pipeline finished.'
-            // Logout from Docker Hub
             sh "command -v docker && docker logout || echo 'Docker command not found, skipping logout'"
         }
         success {
@@ -106,6 +107,7 @@ pipeline {
         }
     }
 }
+
 
 
 
