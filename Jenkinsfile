@@ -7,31 +7,14 @@ pipeline {
         DOCKERHUB_USERNAME = 'abayomi2'           // Your Docker Hub username
         APP_NAME           = 'my-simple-app'      // Your application name
         
-        // Declare DOCKER_IMAGE_NAME and IMAGE_TAG here, they will be fully defined in the 'Initialize' stage
-        DOCKER_IMAGE_NAME  = '' 
-        IMAGE_TAG          = '' 
+        // Define DOCKER_IMAGE_NAME and IMAGE_TAG directly using other env variables
+        // This approach is often more reliable for immediate availability across stages
+        IMAGE_TAG          = "v${env.BUILD_NUMBER}"
+        DOCKER_IMAGE_NAME  = "${env.DOCKERHUB_USERNAME}/${env.APP_NAME}"
     }
 
     stages {
-        stage('Initialize') {
-            steps {
-                script {
-                    print "INFO: Initialize Stage - START"
-                    print "INFO: Initialize Stage - Current BUILD_NUMBER: '${env.BUILD_NUMBER}'"
-                    print "INFO: Initialize Stage - Current DOCKERHUB_USERNAME: '${env.DOCKERHUB_USERNAME}'"
-                    print "INFO: Initialize Stage - Current APP_NAME: '${env.APP_NAME}'"
-                    
-                    // Construct the image tag using the Jenkins provided BUILD_NUMBER
-                    env.IMAGE_TAG = "v${env.BUILD_NUMBER}"
-                    // Construct the full Docker image name
-                    env.DOCKER_IMAGE_NAME = "${env.DOCKERHUB_USERNAME}/${env.APP_NAME}"
-                    
-                    print "INFO: Initialize Stage - SET DOCKER_IMAGE_NAME TO: '${env.DOCKER_IMAGE_NAME}'"
-                    print "INFO: Initialize Stage - SET IMAGE_TAG TO: '${env.IMAGE_TAG}'"
-                    print "INFO: Initialize Stage - END"
-                }
-            }
-        }
+        // The 'Initialize' stage has been removed as variables are set globally above.
 
         // Implicit SCM checkout by Jenkins happens before any stages execute when using "Pipeline script from SCM"
 
