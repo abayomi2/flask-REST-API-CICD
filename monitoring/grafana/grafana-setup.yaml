@@ -1,0 +1,76 @@
+# grafana-setup.yaml
+
+# Using the 'monitoring' namespace created earlier for Prometheus.
+
+# 1. Grafana Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-deployment
+  namespace: monitoring # Deploying in the same namespace as Prometheus
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      # Optional: If you created a dedicated ServiceAccount for Grafana with specific permissions
+      # serviceAccountName: grafana 
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.4.2 # Use a recent stable version of Grafana
+          ports:
+            - containerPort: 3000 # Grafana listens on port 3000
+          # Environment variables can be used to pre-configure Grafana,
+          # e.g., admin user/password, though defaults are fine for this project.
+          # For persistent storage of dashboards, you would configure a PersistentVolumeClaim here.
+          # For this project, we'll use emptyDir for simplicity (dashboards lost on pod restart).
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+          # Optional: Readiness and Liveness Probes
+          readinessProbe:
+            httpGet:
+              path: /api/health # Grafana's health check endpoint
+              port: 3000
+            initialDelaySeconds: 10
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            timeoutSeconds: 1
+            failureThreshold: 10
+      volumes:
+        - name: grafana-storage
+          emptyDir: {} # Data stored here will be lost if the pod is deleted/restarted.
+                       # For persistent dashboards, use a PersistentVolume.
+---
+# 2. Grafana Service
+# Exposes the Grafana server.
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  selector:
+    app: grafana # Must match the labels of the Grafana pods
+  ports:
+    - name: http # Naming the port is good practice
+      protocol: TCP
+      port: 3000 # Port the service will be available on
+      targetPort: 3000 # Port the Grafana container is listening on
+  # type: ClusterIP # Default - only reachable within the cluster.
+  # Use NodePort or LoadBalancer if you need to access Grafana UI directly from outside.
+  type: NodePort # For easier access during setup/testing.
+                 # You might change to LoadBalancer for a more stable external URL.

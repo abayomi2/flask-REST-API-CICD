@@ -1,0 +1,204 @@
+# prometheus-setup.yaml
+
+# 1. Namespace for Monitoring
+# It's good practice to deploy monitoring tools in their own namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+# 2. ServiceAccount for Prometheus
+# Prometheus will use this ServiceAccount to interact with the Kubernetes API.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+# 3. ClusterRole for Prometheus
+# Defines permissions Prometheus needs across the cluster to discover scrape targets.
+# For simplicity, this gives broad read access to pods, services, and endpoints.
+# In a production environment, you might want to restrict this further.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/metrics
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - configmaps # For Prometheus to read its own config if needed, or other configs
+  verbs: ["get"]
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics"] # Allows scraping /metrics endpoints on nodes/pods
+  verbs: ["get"]
+---
+# 4. ClusterRoleBinding for Prometheus
+# Binds the ClusterRole to the ServiceAccount in the 'monitoring' namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+---
+# 5. ConfigMap for Prometheus Configuration (prometheus.yml)
+# This is where you define scrape jobs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s # How frequently to scrape targets
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: 'kubernetes-pods'
+        # This job discovers pods based on annotations.
+        # We will add an annotation to our Flask app's Deployment later.
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          # Example: Scrape only pods with the annotation 'prometheus.io/scrape: true'
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          # Example: Use the pod's annotation for 'prometheus.io/path' as the metrics path (default is /metrics)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          # Example: Use the pod's annotation for 'prometheus.io/port' as the scrape port
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: ${1}:${2}
+            target_label: __address__
+          # Standard relabeling to use pod labels in Prometheus
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      
+      # Add a specific job for your Flask application if you prefer not to rely solely on annotations,
+      # or if you want to scrape the service endpoint instead of individual pods.
+      # This example assumes your Flask app service is labeled 'app: my-simple-app'
+      # and is in the 'default' namespace.
+      - job_name: 'my-simple-app-flask'
+        scrape_interval: 10s # Override global scrape interval for this job
+        metrics_path: /metrics # Path to your metrics endpoint
+        kubernetes_sd_configs:
+          - role: pod # Discover pods
+        relabel_configs:
+          # Keep only pods that have the label 'app: my-simple-app'
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: my-simple-app 
+          # Ensure we are targeting the correct namespace if your app is not in 'default'
+          # - source_labels: [__meta_kubernetes_namespace]
+          #   action: keep
+          #   regex: default # Change if your app is in a different namespace
+          # Use the container port named 'http' or a specific port.
+          # If your Flask app container port is not named, you might need to target a specific port number.
+          # For this example, we assume the pod is exposing metrics on port 5000.
+          # This configuration might need adjustment based on your actual pod spec.
+          - source_labels: [__address__]
+            action: replace
+            regex: ([^:]+)(?::\d+)?
+            replacement: ${1}:5000 # Assuming your Flask app container port is 5000 for metrics
+            target_label: __address__
+---
+# 6. Prometheus Deployment
+# Deploys the Prometheus server.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-deployment
+  namespace: monitoring
+  labels:
+    app: prometheus-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-server
+  template:
+    metadata:
+      labels:
+        app: prometheus-server
+    spec:
+      serviceAccountName: prometheus # Use the ServiceAccount created earlier
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.51.2 # Use a recent stable version
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus/"
+            - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+            - "--web.console.templates=/usr/share/prometheus/consoles"
+            - "--web.enable-lifecycle" # Allows reloading config via HTTP POST to /-/reload
+          ports:
+            - containerPort: 9090 # Prometheus listens on port 9090
+          volumeMounts:
+            - name: prometheus-config-volume
+              mountPath: /etc/prometheus/
+            - name: prometheus-storage-volume
+              mountPath: /prometheus/
+      volumes:
+        - name: prometheus-config-volume
+          configMap:
+            name: prometheus-config # Mount the ConfigMap created earlier
+        - name: prometheus-storage-volume
+          emptyDir: {} # For this project, use emptyDir for simplicity.
+                       # In production, you'd use a PersistentVolume.
+---
+# 7. Prometheus Service
+# Exposes the Prometheus server within the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: monitoring
+  labels:
+    app: prometheus-server
+  # Optional: Add annotations if you want Prometheus itself to be scraped by another Prometheus (meta-monitoring)
+  # annotations:
+  #   prometheus.io/scrape: 'true'
+  #   prometheus.io/port:   '9090'
+spec:
+  selector:
+    app: prometheus-server # Must match the labels of the Prometheus pods
+  ports:
+    - name: web # Naming the port is good practice
+      protocol: TCP
+      port: 9090 # Port the service will be available on
+      targetPort: 9090 # Port the Prometheus container is listening on
+  # type: ClusterIP # Default - only reachable within the cluster.
+  # Use NodePort or LoadBalancer if you need to access Prometheus UI directly from outside for debugging.
+  # For this project, Grafana will access it via ClusterIP.
+  # If you want to quickly test Prometheus UI, you can temporarily change this to NodePort or LoadBalancer.
+  type: NodePort # For easier access during setup/testing. Change to ClusterIP for production if only Grafana needs access.
