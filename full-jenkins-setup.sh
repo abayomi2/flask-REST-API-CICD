@@ -243,7 +243,7 @@ if sudo diff /etc/ssh/sshd_config /etc/ssh/sshd_config.bak >/dev/null ; then
 else
     echo "sshd_config modified. Restarting SSH service..."
     sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak # Create a backup before restart
-    sudo systemctl restart sshd
+    sudo systemctl restart ssh
 fi
 echo "PasswordAuthentication for SSH should now be enabled."
 echo "WARNING: Enabling password authentication is generally less secure than key-based authentication. Ensure strong passwords are used."

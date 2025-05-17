@@ -6,13 +6,13 @@ aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
 
 # CI/CD Pipeline for Flask Application on AWS EKS using Jenkins and Terraform
 
-This project demonstrates an end-to-end CI/CD pipeline that automates the deployment of a Python Flask web application to a Kubernetes cluster (AWS EKS). The pipeline uses Jenkins for orchestration, Terraform for Infrastructure as Code (IaC), Docker for containerization, Docker Hub as the image repository, and GitHub for version control with webhook integration for continuous integration.
+This project demonstrates an end-to-end CI/CD pipeline that automates the deployment of a Python Flask web application to a Kubernetes cluster (AWS EKS). The pipeline uses Jenkins for CI/CD, AWS EKS for container app orchestration, Terraform for Infrastructure as Code (IaC), Docker for containerization, Docker Hub as the image repository, and GitHub for version control with webhook integration for continuous integration.
 
 ## Project Overview
 
 The core objective is to showcase a robust DevOps workflow:
 1.  **Infrastructure Provisioning:** AWS EKS cluster and supporting resources are provisioned using Terraform.
-2.  **CI/CD Server Setup:** A Jenkins server is set up on an AWS EC2 instance with all necessary tools (Java, Docker, AWS CLI, kubectl).
+2.  **CI/CD Server Setup:** A Jenkins server is set up on an AWS EC2 instance with all necessary tools (Java, Docker, AWS CLI, kubectl, Trivy).
 3.  **Application Containerization:** A simple Flask application is containerized using Docker.
 4.  **Automated Pipeline:** A Jenkins pipeline (`Jenkinsfile`) defines the CI/CD process:
     * Checkout code from GitHub.
@@ -52,6 +52,8 @@ Before you begin, ensure you have the following:
 │       └── grafana-setup.yaml    # (or individual Grafana manifests)
 ├── terraform/              # Terraform scripts for AWS infrastructure
 │   └── main.tf             # (and potentially variables.tf, outputs.tf)
+|       variables.tf
+|       outputs.tf
 ├── Jenkinsfile             # Jenkins declarative pipeline script
 ├── install_jenkins_docker_ubuntu.sh # (Optional) Script to setup Jenkins server
 ├── smoke_test.sh           # Script for post-deployment smoke testing
@@ -110,7 +112,7 @@ Before you begin, ensure you have the following:
     * **IAM Role (Crucial for AWS CLI):** Attach an IAM Role to this EC2 instance that grants permissions to interact with EKS (e.g., the `JenkinsEKSAccessPolicy` detailed in troubleshooting, allowing at least `eks:DescribeCluster`).
     * Launch the instance and connect via SSH.
 2.  **Run Setup Script (Optional but Recommended):**
-    * Use the `install_jenkins_docker_ubuntu.sh` script (provided in earlier discussions) or manually install the following:
+    * Use the `full-jenkins-setup.sh` script (provided in earlier discussions) or manually install the following:
         * **Update packages:** `sudo apt update -y && sudo apt upgrade -y`
         * **Java (OpenJDK 17):** Jenkins requires Java.
             ```bash
