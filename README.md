@@ -2,6 +2,8 @@
 aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
 # Example: aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
 
+## What to install on Jenkins Agent: Jenkins, AWC CLI, Docker, python3, pip
+
 # CI/CD Pipeline for Flask Application on AWS EKS using Jenkins and Terraform
 
 This project demonstrates an end-to-end CI/CD pipeline that automates the deployment of a Python Flask web application to a Kubernetes cluster (AWS EKS). The pipeline uses Jenkins for orchestration, Terraform for Infrastructure as Code (IaC), Docker for containerization, Docker Hub as the image repository, and GitHub for version control with webhook integration for continuous integration.
