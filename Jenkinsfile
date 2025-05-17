@@ -16,11 +16,19 @@ pipeline {
         stage('Initialize') {
             steps {
                 script {
+                    print "INFO: Initialize Stage - START"
+                    print "INFO: Initialize Stage - Current BUILD_NUMBER: '${env.BUILD_NUMBER}'"
+                    print "INFO: Initialize Stage - Current DOCKERHUB_USERNAME: '${env.DOCKERHUB_USERNAME}'"
+                    print "INFO: Initialize Stage - Current APP_NAME: '${env.APP_NAME}'"
+                    
                     // Construct the image tag using the Jenkins provided BUILD_NUMBER
                     env.IMAGE_TAG = "v${env.BUILD_NUMBER}"
                     // Construct the full Docker image name
                     env.DOCKER_IMAGE_NAME = "${env.DOCKERHUB_USERNAME}/${env.APP_NAME}"
-                    print "INFO: Docker Image to be built and pushed: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
+                    
+                    print "INFO: Initialize Stage - SET DOCKER_IMAGE_NAME TO: '${env.DOCKER_IMAGE_NAME}'"
+                    print "INFO: Initialize Stage - SET IMAGE_TAG TO: '${env.IMAGE_TAG}'"
+                    print "INFO: Initialize Stage - END"
                 }
             }
         }
@@ -46,12 +54,15 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 dir('application') {
-                    // Ensure DOCKER_IMAGE_NAME and IMAGE_TAG are not null/empty here
                     script {
-                        if (env.DOCKER_IMAGE_NAME && env.IMAGE_TAG) {
+                        print "INFO: Build Docker Image Stage - Current DOCKER_IMAGE_NAME: '${env.DOCKER_IMAGE_NAME}'"
+                        print "INFO: Build Docker Image Stage - Current IMAGE_TAG: '${env.IMAGE_TAG}'"
+                        
+                        // More explicit check for null or empty strings
+                        if (env.DOCKER_IMAGE_NAME != null && env.DOCKER_IMAGE_NAME.trim() != "" && env.IMAGE_TAG != null && env.IMAGE_TAG.trim() != "") {
                             sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.DOCKER_IMAGE_NAME}:latest ."
                         } else {
-                            error "ERROR: DOCKER_IMAGE_NAME or IMAGE_TAG is not set. Halting build."
+                            error "ERROR: DOCKER_IMAGE_NAME ('${env.DOCKER_IMAGE_NAME}') or IMAGE_TAG ('${env.IMAGE_TAG}') is not properly set. Halting build."
                         }
                     }
                 }
@@ -68,16 +79,17 @@ pipeline {
 
         stage('Push Docker Image to Docker Hub') {
             steps {
-                // Ensure DOCKER_IMAGE_NAME and IMAGE_TAG are not null/empty here
                 script {
-                    if (env.DOCKER_IMAGE_NAME && env.IMAGE_TAG) {
+                    print "INFO: Push Docker Image Stage - Current DOCKER_IMAGE_NAME: '${env.DOCKER_IMAGE_NAME}'"
+                    print "INFO: Push Docker Image Stage - Current IMAGE_TAG: '${env.IMAGE_TAG}'"
+                    if (env.DOCKER_IMAGE_NAME != null && env.DOCKER_IMAGE_NAME.trim() != "" && env.IMAGE_TAG != null && env.IMAGE_TAG.trim() != "") {
                         sh "docker push ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
                         sh "docker push ${env.DOCKER_IMAGE_NAME}:latest"
                         // Clean up local images
                         sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}"
                         sh "docker rmi ${env.DOCKER_IMAGE_NAME}:latest"
                     } else {
-                        error "ERROR: DOCKER_IMAGE_NAME or IMAGE_TAG is not set. Halting push."
+                        error "ERROR: DOCKER_IMAGE_NAME ('${env.DOCKER_IMAGE_NAME}') or IMAGE_TAG ('${env.IMAGE_TAG}') is not properly set. Halting push."
                     }
                 }
             }
@@ -93,13 +105,14 @@ pipeline {
 
         stage('Update Kubernetes Manifests') {
             steps {
-                // Ensure DOCKER_IMAGE_NAME and IMAGE_TAG are not null/empty here
                 script {
-                    if (env.DOCKER_IMAGE_NAME && env.IMAGE_TAG) {
+                    print "INFO: Update K8s Manifests Stage - Current DOCKER_IMAGE_NAME: '${env.DOCKER_IMAGE_NAME}'"
+                    print "INFO: Update K8s Manifests Stage - Current IMAGE_TAG: '${env.IMAGE_TAG}'"
+                    if (env.DOCKER_IMAGE_NAME != null && env.DOCKER_IMAGE_NAME.trim() != "" && env.IMAGE_TAG != null && env.IMAGE_TAG.trim() != "") {
                         sh "sed -i 's|image:.*|image: ${env.DOCKER_IMAGE_NAME}:${env.IMAGE_TAG}|g' kubernetes/deployment.yaml"
                         sh "cat kubernetes/deployment.yaml"
                     } else {
-                        error "ERROR: DOCKER_IMAGE_NAME or IMAGE_TAG is not set. Halting manifest update."
+                        error "ERROR: DOCKER_IMAGE_NAME ('${env.DOCKER_IMAGE_NAME}') or IMAGE_TAG ('${env.IMAGE_TAG}') is not properly set. Halting manifest update."
                     }
                 }
             }
@@ -129,6 +142,7 @@ pipeline {
         }
     }
 }
+
 
 
 
