@@ -2,7 +2,7 @@
 aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
 # Example: aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
 
-## What to install on Jenkins Agent: Jenkins, AWC CLI, Docker, python3, pip
+## What to install on Jenkins Agent: Jenkins, AWC CLI, Docker, python3, pip, python3.12-venv -y, 
 
 # CI/CD Pipeline for Flask Application on AWS EKS using Jenkins and Terraform
 
