@@ -38,18 +38,24 @@ Before you begin, ensure you have the following:
 
 .
 ├── application/            # Python Flask application code
-│   ├── app.py
-│   ├── requirements.txt
-│   └── Dockerfile
-├── kubernetes/             # Kubernetes manifest files
+│   ├── app.py              # Main Flask application with API endpoints and Prometheus metrics
+│   ├── requirements.txt    # Python dependencies (Flask, prometheus_flask_exporter, etc.)
+│   ├── Dockerfile
+│   └── test_app.py         # Unit tests for the Flask application
+├── kubernetes/             # Kubernetes manifest files for the application
 │   ├── deployment.yaml
 │   └── service.yaml
+├── monitoring/             # Kubernetes manifest files for monitoring stack
+│   ├── prometheus/
+│   │   └── prometheus-setup.yaml # (or individual Prometheus manifests)
+│   └── grafana/
+│       └── grafana-setup.yaml    # (or individual Grafana manifests)
 ├── terraform/              # Terraform scripts for AWS infrastructure
 │   └── main.tf             # (and potentially variables.tf, outputs.tf)
 ├── Jenkinsfile             # Jenkins declarative pipeline script
 ├── install_jenkins_docker_ubuntu.sh # (Optional) Script to setup Jenkins server
+├── smoke_test.sh           # Script for post-deployment smoke testing
 └── README.md               # This file
-
 ---
 
 ## Stage 1: Infrastructure as Code (IaC) with Terraform on AWS
@@ -282,16 +288,176 @@ Before you begin, ensure you have the following:
 3.  **Delete Docker Hub Images (Optional):** Log in to Docker Hub and delete the images if desired.
 4.  **Remove GitHub Webhook (Optional).**
 
+---------------------------------------------------------------------------------------------------
+                                  ** ENHANCEMENT **
+---------------------------------------------------------------------------------------------------
+
+## Stage 1: Infrastructure as Code (IaC) with Terraform on AWS
+
+**Goal:** Provision an AWS EKS cluster and necessary IAM roles using Terraform.
+
+**(Steps remain the same as previous README: Navigate to `terraform/`, `terraform init`, `terraform plan`, `terraform apply`)**
+
+---
+
+## Stage 2: Jenkins Server Setup on AWS EC2
+
+**Goal:** Set up an EC2 instance to act as the Jenkins CI/CD server, equipped with all necessary tools.
+
+**Steps:**
+
+1.  **Launch an EC2 Instance:** (Details same as previous README, ensure IAM Role for EKS access).
+2.  **Run Setup Script or Manually Install:**
+    * Tools to install: Java (OpenJDK 17), Jenkins, Docker, AWS CLI v2, kubectl, and **Trivy**.
+    * (Refer to `install_jenkins_docker_ubuntu.sh` or previous instructions for installing these tools).
+    * Ensure the `jenkins` user is added to the `docker` group.
+3.  **Initial Jenkins Setup:** (Access Jenkins, initial password, install suggested plugins, create admin user).
+4.  **Configure Jenkins Credentials:** (Add Docker Hub credentials with ID `dockerhub-credentials`).
+
+---
+
+## Stage 3: Application Development & Containerization
+
+**Goal:** Develop the Flask web application with enhanced API, HTML homepage, Prometheus metrics, and a `Dockerfile`.
+
+**Steps:**
+
+1.  **Flask Application (`application/app.py`):**
+    * Develop a Python Flask app with:
+        * An informative HTML homepage at the root (`/`).
+        * REST API endpoints (e.g., `/api/v1/health`, `/api/v1/devices/...`).
+        * Instrumentation using `prometheus_flask_exporter` to expose a `/metrics` endpoint.
+2.  **Python Dependencies (`application/requirements.txt`):**
+    * Include `Flask`, `Werkzeug` (pinned to a compatible version like `2.3.8`), and `prometheus_flask_exporter`.
+3.  **Unit Tests (`application/test_app.py`):**
+    * Write unit tests using Python's `unittest` module to cover the API endpoints.
+4.  **Dockerfile (`application/Dockerfile`):**
+    * Standard Dockerfile to containerize the Flask application.
+
+---
+
+## Stage 4: Kubernetes Manifests (Application & Monitoring)
+
+**Goal:** Define Kubernetes resources to deploy the application and the monitoring stack.
+
+**Steps:**
+
+1.  **Application Manifests (`kubernetes/`):**
+    * **`deployment.yaml`**: Defines the Deployment for the Flask application. Ensure it has appropriate labels (e.g., `app: my-simple-app`) for service discovery and Prometheus scraping.
+    * **`service.yaml`**: Defines the Service (e.g., type `LoadBalancer`) to expose the Flask application.
+2.  **Monitoring Stack Manifests (`monitoring/`):**
+    * **Prometheus (`monitoring/prometheus/prometheus-setup.yaml`):**
+        * Includes Namespace, ServiceAccount, ClusterRole, ClusterRoleBinding for Prometheus.
+        * ConfigMap for `prometheus.yml` defining scrape jobs (including one to scrape the Flask app based on labels/annotations and the `/metrics` endpoint on port 5000).
+        * Deployment for the Prometheus server.
+        * Service (e.g., type `NodePort`) to expose Prometheus.
+    * **Grafana (`monitoring/grafana/grafana-setup.yaml`):**
+        * Deployment for the Grafana server.
+        * Service (e.g., type `NodePort`) to expose Grafana.
+        * Uses `emptyDir` for Grafana storage in this project (for persistence, a PVC would be used).
+3.  **Apply Monitoring Manifests (Manual Step after EKS is up):**
+    ```bash
+    kubectl apply -f monitoring/prometheus/prometheus-setup.yaml
+    kubectl apply -f monitoring/grafana/grafana-setup.yaml
+    ```
+    Verify pods in the `monitoring` namespace are running.
+
+---
+
+## Stage 5: Jenkins CI/CD Pipeline (`Jenkinsfile`)
+
+**Goal:** Automate the build, test, security scan, deployment, and smoke test process.
+
+**Steps:**
+
+1.  **Create `Jenkinsfile`:** (Declarative pipeline script in the project root).
+2.  **Define Environment Variables:** (`AWS_REGION`, `EKS_CLUSTER_NAME`, `DOCKERHUB_USERNAME`, `APP_NAME`, `IMAGE_TAG`, `DOCKER_IMAGE_NAME`, `APP_SERVICE_NAME`, `APP_NAMESPACE`).
+3.  **Pipeline Stages:**
+    * **(Implicit Checkout):** Code is checked out from Git.
+    * **Run Unit Tests:** Executes `python3 -m unittest discover` within a virtual environment in the `application` directory. Installs dependencies from `requirements.txt` into the venv first.
+    * **Build Docker Image:** Builds the Docker image and tags it.
+    * **Scan Docker Image with Trivy:** Scans the built image for `HIGH,CRITICAL` vulnerabilities using `trivy image --exit-code 0 ...`. (Currently reports, doesn't fail build).
+    * **Login to Docker Hub:** Logs in using stored credentials.
+    * **Push Docker Image to Docker Hub:** Pushes the tagged image.
+    * **Configure Kubectl:** Runs `aws eks update-kubeconfig`.
+    * **Update Kubernetes Manifests:** Uses `sed` to update `kubernetes/deployment.yaml` with the new image tag.
+    * **Deploy to EKS:** Applies `kubernetes/deployment.yaml` and `kubernetes/service.yaml`. Waits for rollout.
+    * **Smoke Test Application:** After a delay, retrieves the LoadBalancer URL and executes `smoke_test.sh` against the live application.
+4.  **Jenkins Job Configuration:** (Create "Pipeline" job, configure "Pipeline script from SCM").
+
+---
+
+## Stage 6: GitHub Webhook for Continuous Integration
+
+**Goal:** Automatically trigger the Jenkins pipeline on code pushes.
+
+**(Steps remain the same as previous README: Configure "GitHub hook trigger" in Jenkins job, Add webhook in GitHub repo settings pointing to `http://<JENKINS_IP>:8080/github-webhook/`)**
+
+---
+
+## Running the Project (Summary)
+
+1.  Clone this repository.
+2.  Provision AWS infrastructure using Terraform (`terraform/terraform apply`).
+3.  Set up the Jenkins server on an EC2 instance with all tools (Java, Jenkins, Docker, AWS CLI, kubectl, Trivy) and the necessary IAM role.
+4.  Apply Kubernetes manifests for Prometheus and Grafana:
+    ```bash
+    kubectl apply -f monitoring/prometheus/prometheus-setup.yaml
+    kubectl apply -f monitoring/grafana/grafana-setup.yaml
+    ```
+5.  Configure the Jenkins pipeline job, pointing to this Git repository.
+6.  Configure the GitHub webhook.
+7.  Push a code change or manually trigger the Jenkins job.
+
+## Accessing Services
+
+* **Application:**
+    * Get the LoadBalancer DNS: `kubectl get service my-simple-app-service -n <your-app-namespace> -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`
+    * Access via browser: `http://<LOADBALANCER_DNS>/`
+    * Metrics endpoint: `http://<LOADBALANCER_DNS>/metrics`
+* **Prometheus UI:**
+    * Get NodePort: `kubectl get svc prometheus-service -n monitoring`
+    * Access via browser: `http://<EKS_NODE_IP>:<PROMETHEUS_NODE_PORT>`
+* **Grafana UI:**
+    * Get NodePort: `kubectl get svc grafana-service -n monitoring`
+    * Access via browser: `http://<EKS_NODE_IP>:<GRAFANA_NODE_PORT>` (Default login: admin/admin, then change password).
+    * Configure Prometheus as a data source in Grafana: `http://prometheus-service.monitoring.svc.cluster.local:9090`.
+
+---
+
+## Cleaning Up
+
+**Crucial to avoid ongoing AWS charges!**
+
+1.  **Delete Application and Monitoring Resources from EKS:**
+    ```bash
+    kubectl delete -f kubernetes/ # Deletes app deployment and service
+    kubectl delete -f monitoring/grafana/grafana-setup.yaml
+    kubectl delete -f monitoring/prometheus/prometheus-setup.yaml
+    kubectl delete namespace monitoring # If it's empty
+    ```
+2.  **Destroy Terraform Infrastructure:**
+    ```bash
+    cd terraform
+    terraform destroy
+    ```
+3.  **Terminate Jenkins EC2 Instance.**
+4.  **Delete Docker Hub Images (Optional).**
+5.  **Remove GitHub Webhook (Optional).**
+
 ---
 
 ## Future Enhancements
 
-* Implement automated testing stages (unit, integration, end-to-end) in the Jenkins pipeline.
-* Add static code analysis and security scanning (e.g., SonarQube, Trivy, Snyk).
+* Implement more sophisticated testing (integration, end-to-end).
+* Configure Trivy to fail the pipeline based on vulnerability severity.
 * Use a more robust solution for updating Kubernetes manifests (e.g., Kustomize, Helm).
-* Implement secrets management (e.g., HashiCorp Vault, AWS Secrets Manager).
-* Set up monitoring and logging for the application and EKS cluster (e.g., Prometheus, Grafana, AWS CloudWatch Container Insights).
+* Implement robust secrets management (e.g., HashiCorp Vault, AWS Secrets Manager).
+* Create more detailed Grafana dashboards.
+* Use PersistentVolumeClaims for Prometheus and Grafana data.
+* Automate deployment of Prometheus/Grafana via Jenkins or GitOps.
 * Implement more advanced deployment strategies (blue/green, canary).
-* Use a dedicated container registry like AWS ECR instead of Docker Hub for private images.
+* Use a dedicated container registry like AWS ECR.
 * Parameterize the Jenkins pipeline.
-* Secure Jenkins (e.g., configure SSL, matrix-based security).
+* Secure Jenkins (e.g., SSL, matrix-based security).
+
