@@ -36,28 +36,29 @@ Before you begin, ensure you have the following:
 
 ## Project Structure
 
-.
-├── application/            # Python Flask application code
-│   ├── app.py              # Main Flask application with API endpoints and Prometheus metrics
-│   ├── requirements.txt    # Python dependencies (Flask, prometheus_flask_exporter, etc.)
+your-project-name/
+├── application/
+│   ├── app.py
+│   ├── requirements.txt
 │   ├── Dockerfile
-│   └── test_app.py         # Unit tests for the Flask application
-├── kubernetes/             # Kubernetes manifest files for the application
+│   └── test_app.py
+├── kubernetes/
 │   ├── deployment.yaml
 │   └── service.yaml
-├── monitoring/             # Kubernetes manifest files for monitoring stack
+├── monitoring/
 │   ├── prometheus/
-│   │   └── prometheus-setup.yaml # (or individual Prometheus manifests)
+│   │   └── prometheus-setup.yaml
 │   └── grafana/
-│       └── grafana-setup.yaml    # (or individual Grafana manifests)
-├── terraform/              # Terraform scripts for AWS infrastructure
-│   └── main.tf             # (and potentially variables.tf, outputs.tf)
+│       └── grafana-setup.yaml
+├── terraform/
+│   └── main.tf
 |       variables.tf
-|       outputs.tf
-├── Jenkinsfile             # Jenkins declarative pipeline script
-├── install_jenkins_docker_ubuntu.sh # (Optional) Script to setup Jenkins server
-├── smoke_test.sh           # Script for post-deployment smoke testing
-└── README.md               # This file
+|       outputs.ft
+├── Jenkinsfile
+├── install_jenkins_docker_ubuntu.sh
+├── smoke_test.sh
+├── sonar-project.properties  # <<<< NEW FILE
+└── README.md
 ---
 
 ## Stage 1: Infrastructure as Code (IaC) with Terraform on AWS
