@@ -48,29 +48,9 @@ The objective is to showcase a robust DevOps workflow encompassing:
 
 ## Project Structure
 
-your-project-name/
-├── application/
-│   ├── app.py
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── test_app.py
-├── kubernetes/
-│   ├── deployment.yaml
-│   └── service.yaml
-├── monitoring/
-│   ├── prometheus/
-│   │   └── prometheus-setup.yaml
-│   └── grafana/
-│       └── grafana-setup.yaml
-├── terraform/
-│   ├── main.tf
-│   ├── variables.tf
-│   └── outputs.tf
-├── Jenkinsfile
-├── install_jenkins_server_tools.sh
-├── smoke_test.sh
-├── sonar-project.properties
-└── README.md
+
+![Application Homepage Showcase](images/project-structure.png) 
+
 ---
 
 ## Detailed Project Stages
