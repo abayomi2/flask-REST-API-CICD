@@ -2,4 +2,4 @@ just to push
 updated jenkins cli
 sum(rate(flask_http_request_total[1m])) by (job)
 sum(rate(flask_http_request_duration_seconds_sum[5m])) by (job) / sum(rate(flask_http_request_duration_seconds_count[5m])) by (job)
-test to build
+test to build again
