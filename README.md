@@ -1,38 +1,50 @@
-# TERRAFORM
-aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
-# Example: aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
+# Full CI/CD Pipeline for Flask Application on AWS EKS
+## (Jenkins, Terraform, Docker, Kubernetes, Prometheus, Grafana, Trivy, SonarQube)
 
-## What to install on Jenkins Agent: Jenkins, AWC CLI, Docker, python3, pip, python3.12-venv -y, 
+This project demonstrates a comprehensive, end-to-end CI/CD pipeline that automates the build, test, security scan, static code analysis, deployment, and validation of a Python Flask web application to a Kubernetes cluster (AWS EKS).
 
-# CI/CD Pipeline for Flask Application on AWS EKS using Jenkins and Terraform
-
-This project demonstrates an end-to-end CI/CD pipeline that automates the deployment of a Python Flask web application to a Kubernetes cluster (AWS EKS). The pipeline uses Jenkins for CI/CD, AWS EKS for container app orchestration, Terraform for Infrastructure as Code (IaC), Docker for containerization, Docker Hub as the image repository, and GitHub for version control with webhook integration for continuous integration.
+**Core Technologies & Features:**
+* **Infrastructure as Code (IaC):** AWS EKS cluster provisioned using Terraform.
+* **CI/CD Orchestration:** Jenkins server on AWS EC2.
+* **Containerization:** Application containerized with Docker, images stored on Docker Hub.
+* **Orchestration:** Deployment to AWS EKS (Elastic Kubernetes Service).
+* **Application:** Python Flask REST API with an HTML homepage and Prometheus metrics exporter.
+* **Automated Testing:** Unit tests for the Flask application integrated into the pipeline.
+* **Static Code Analysis:** SonarQube integration for code quality and vulnerability assessment.
+* **Security Scanning:** Docker image vulnerability scanning using Trivy.
+* **Monitoring & Visualization:** Metrics collection with Prometheus and dashboarding with Grafana.
+* **Post-Deployment Validation:** Automated smoke tests.
+* **Continuous Integration:** GitHub webhook triggers the Jenkins pipeline on code pushes.
 
 ## Project Overview
 
-The core objective is to showcase a robust DevOps workflow:
-1.  **Infrastructure Provisioning:** AWS EKS cluster and supporting resources are provisioned using Terraform.
-2.  **CI/CD Server Setup:** A Jenkins server is set up on an AWS EC2 instance with all necessary tools (Java, Docker, AWS CLI, kubectl, Trivy).
-3.  **Application Containerization:** A simple Flask application is containerized using Docker.
-4.  **Automated Pipeline:** A Jenkins pipeline (`Jenkinsfile`) defines the CI/CD process:
+The objective is to showcase a robust DevOps workflow encompassing:
+1.  **Infrastructure Provisioning:** Automated setup of AWS EKS.
+2.  **CI/CD Server Setup:** Configuration of a Jenkins server with all necessary build, test, and deployment tools.
+3.  **Application Development:** A Flask application with API endpoints, a user-friendly homepage, and Prometheus metrics.
+4.  **Automated Pipeline (`Jenkinsfile`):**
     * Checkout code from GitHub.
-    * Build the Docker image.
-    * Push the image to Docker Hub.
-    * Configure `kubectl` to connect to the EKS cluster.
-    * Update Kubernetes deployment manifests with the new image tag.
-    * Deploy the application to EKS.
-5.  **Continuous Integration:** A GitHub webhook triggers the Jenkins pipeline automatically on code pushes.
+    * Run unit tests.
+    * Perform static code analysis with SonarQube.
+    * Build Docker image.
+    * Scan Docker image for vulnerabilities with Trivy.
+    * Push image to Docker Hub.
+    * Configure `kubectl` for EKS.
+    * Update Kubernetes manifests.
+    * Deploy to EKS.
+    * Run smoke tests.
+5.  **Monitoring Stack:** Deployment of Prometheus and Grafana to EKS.
+6.  **Continuous Integration:** Automated pipeline triggers via GitHub webhooks.
 
 ## Prerequisites
 
-Before you begin, ensure you have the following:
-* An AWS Account with necessary permissions to create EKS clusters, EC2 instances, IAM roles, etc.
-* AWS CLI configured locally (for initial Terraform setup if not running Terraform from an environment with an IAM role).
+* AWS Account with necessary permissions.
+* AWS CLI configured locally (for initial Terraform setup if not using an IAM role).
 * Terraform CLI installed locally.
 * Git installed locally.
-* A GitHub account and a repository for this project.
-* A Docker Hub account.
-* A text editor or IDE (e.g., VS Code).
+* GitHub account and a repository for this project.
+* Docker Hub account.
+* Text editor or IDE (e.g., VS Code).
 
 ## Project Structure
 
@@ -51,416 +63,257 @@ your-project-name/
 │   └── grafana/
 │       └── grafana-setup.yaml
 ├── terraform/
-│   └── main.tf
-|       variables.tf
-|       outputs.ft
+│   ├── main.tf
+│   ├── variables.tf
+│   └── outputs.tf
 ├── Jenkinsfile
-├── install_jenkins_docker_ubuntu.sh
+├── install_jenkins_server_tools.sh
 ├── smoke_test.sh
-├── sonar-project.properties  # <<<< NEW FILE
+├── sonar-project.properties
 └── README.md
 ---
 
-## Stage 1: Infrastructure as Code (IaC) with Terraform on AWS
+## Detailed Project Stages
 
-**Goal:** Provision an AWS EKS cluster and necessary IAM roles using Terraform.
+### Stage 1: Infrastructure as Code (IaC) with Terraform
 
+**Goal:** Provision an AWS EKS cluster.
 **Steps:**
-
-1.  **Navigate to Terraform Directory:**
+1.  Navigate to `terraform/`.
+2.  Review `main.tf` (defines AWS provider, VPC/subnet data sources, IAM roles for EKS, EKS cluster, and node group). Ensure variables (e.g., `aws_region`, `cluster_name`) are set.
+3.  Initialize Terraform: `terraform init`
+4.  Plan deployment: `terraform plan`
+5.  Apply configuration: `terraform apply` (confirm with `yes`). This takes 15-25 minutes.
+6.  Configure `kubectl` locally to interact with your new cluster:
     ```bash
-    cd terraform
+    aws eks update-kubeconfig --region <your-region> --name <your-cluster-name>
+    # Example: aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
     ```
-2.  **Review Terraform Configuration (`main.tf`):**
-    * The `main.tf` file defines:
-        * AWS provider and region.
-        * Data sources to fetch your default VPC and subnets (filtered for EKS compatibility).
-        * IAM roles for the EKS cluster and node groups (`eks_cluster_role`, `eks_nodegroup_role`) with necessary policies attached (`AmazonEKSClusterPolicy`, `AmazonEKSVPCResourceController`, `AmazonEKSWorkerNodePolicy`, `AmazonEC2ContainerRegistryReadOnly`, `AmazonEKS_CNI_Policy`).
-        * The AWS EKS cluster resource (`aws_eks_cluster`).
-        * The AWS EKS managed node group resource (`aws_eks_node_group`).
-    * Ensure variables like `aws_region`, `cluster_name`, `eks_version`, `node_instance_type`, etc., are set as desired. The script uses `us-east-1` and `my-dev-eks-cluster` as defaults.
-3.  **Initialize Terraform:**
-    ```bash
-    terraform init
-    ```
-4.  **Plan the Deployment:**
-    ```bash
-    terraform plan
-    ```
-    Review the plan to understand what resources will be created.
-5.  **Apply the Configuration:**
-    ```bash
-    terraform apply
-    ```
-    Type `yes` when prompted. This process can take 15-25 minutes.
-6.  **Verify EKS Cluster:**
-    Once applied, Terraform will output cluster details. You can also check the AWS Management Console.
 
 ---
 
-## Stage 2: Jenkins Server Setup on AWS EC2
+### Stage 2: Jenkins Server Setup on AWS EC2
 
-**Goal:** Set up an EC2 instance to act as the Jenkins CI/CD server, equipped with all necessary tools.
+**Goal:** Set up an EC2 instance as a Jenkins CI/CD server with all tools.
+**Tools to Install on Jenkins Server:**
+* Java (OpenJDK 17)
+* Jenkins
+* Docker Engine
+* AWS CLI v2
+* `kubectl`
+* Python 3, `pip3`, `python3-venv` (e.g., `python3.12-venv`)
+* Trivy
+* SonarScanner CLI
+* Git
 
 **Steps:**
-
-1.  **Launch an EC2 Instance:**
-    * Choose an Ubuntu Server AMI (e.g., Ubuntu 22.04 LTS or 24.04 LTS).
-    * Select an instance type (e.g., `t2.medium` or `t3.medium` is a good start).
-    * **Security Group:** Ensure inbound rules allow:
-        * SSH (port 22) from your IP.
-        * HTTP (port 8080) from your IP (or `0.0.0.0/0` for initial setup, then restrict to GitHub IPs for webhooks).
-    * **IAM Role (Crucial for AWS CLI):** Attach an IAM Role to this EC2 instance that grants permissions to interact with EKS (e.g., the `JenkinsEKSAccessPolicy` detailed in troubleshooting, allowing at least `eks:DescribeCluster`).
-    * Launch the instance and connect via SSH.
-2.  **Run Setup Script (Optional but Recommended):**
-    * Use the `full-jenkins-setup.sh` script (provided in earlier discussions) or manually install the following:
-        * **Update packages:** `sudo apt update -y && sudo apt upgrade -y`
-        * **Java (OpenJDK 17):** Jenkins requires Java.
-            ```bash
-            sudo apt install -y openjdk-17-jdk
-            # Set JAVA_HOME (as done in the script)
-            ```
-        * **Jenkins:** Follow the official Jenkins installation guide for Debian/Ubuntu.
-            ```bash
-            # Example (key URL might change, refer to current Jenkins docs or the provided script):
-            # sudo wget -O /usr/share/keyrings/jenkins-keyring.asc [https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key](https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key)
-            # echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] [https://pkg.jenkins.io/debian-stable](https://pkg.jenkins.io/debian-stable) binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
-            # sudo apt update -y
-            # sudo apt install -y jenkins
-            # sudo systemctl enable --now jenkins
-            ```
-        * **Docker:** Install Docker Engine.
-            ```bash
-            # Follow official Docker installation guide for Ubuntu
-            # Add jenkins user to docker group:
-            # sudo usermod -aG docker jenkins
-            # sudo systemctl restart jenkins
-            ```
-        * **AWS CLI v2:**
-            ```bash
-            # curl "[https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip](https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip)" -o "awscliv2.zip"
-            # sudo apt install unzip -y
-            # unzip awscliv2.zip
-            # sudo ./aws/install --update
-            ```
-        * **kubectl:** Install a version compatible with your EKS cluster (e.g., 1.29.x).
-            ```bash
-            # curl -LO "[https://dl.k8s.io/release/v1.29.5/bin/linux/amd64/kubectl](https://dl.k8s.io/release/v1.29.5/bin/linux/amd64/kubectl)" # Or latest stable
-            # chmod +x ./kubectl
-            # sudo mv ./kubectl /usr/local/bin/kubectl
-            ```
+1.  **Launch EC2 Instance:** Ubuntu Server (e.g., 22.04/24.04 LTS), `t3.medium` or larger recommended if running SonarQube on the same instance.
+    * **Security Group:** Allow inbound SSH (port 22 from your IP), HTTP (port 8080 for Jenkins UI from your IP/GitHub IPs), and HTTP (port 9000 for SonarQube UI from your IP).
+    * **IAM Role:** Attach an IAM Role to the EC2 instance granting permissions for `eks:DescribeCluster` (for `aws eks update-kubeconfig`) and any other AWS interactions needed by Jenkins.
+2.  **Install Tools:** Connect via SSH and run the comprehensive `install_jenkins_server_tools.sh` script (as provided in earlier discussions, which includes all the tools listed above). This script should also add the `jenkins` user to the `docker` group and restart Jenkins.
 3.  **Initial Jenkins Setup:**
-    * Access Jenkins in your browser: `http://<your_ec2_public_ip>:8080`.
-    * Retrieve the initial admin password: `sudo cat /var/lib/jenkins/secrets/initialAdminPassword`.
-    * Follow the setup wizard: Install suggested plugins. Create an admin user.
+    * Access Jenkins: `http://<your_ec2_public_ip>:8080`.
+    * Unlock Jenkins: `sudo cat /var/lib/jenkins/secrets/initialAdminPassword`.
+    * Install suggested plugins and create an admin user.
 4.  **Configure Jenkins Credentials:**
-    * Go to "Manage Jenkins" -> "Credentials" -> "System" -> "Global credentials".
-    * Add your Docker Hub credentials:
-        * Kind: Username with password
-        * Username: Your Docker Hub username
-        * Password: Your Docker Hub password or Access Token
-        * ID: `dockerhub-credentials` (or as referenced in `Jenkinsfile`)
+    * **Docker Hub:** "Manage Jenkins" -> "Credentials" -> "System" -> "Global credentials" -> "Add Credentials". Kind: "Username with password", ID: `dockerhub-credentials`.
+    * **SonarQube Token (see Stage 7 for token generation):** Kind: "Secret text", ID: `sonarqube-auth-token`.
+5.  **Configure SonarQube in Jenkins:**
+    * "Manage Jenkins" -> "Configure System":
+        * **SonarQube servers:** Add SonarQube server. Name: `MyLocalSonarQube` (must match `Jenkinsfile`), Server URL: `http://localhost:9000` (if SonarQube Docker is on the same Jenkins EC2), Server authentication token: Select the `sonarqube-auth-token` credential.
+    * "Manage Jenkins" -> "Global Tool Configuration":
+        * **SonarQube Scanner:** Add SonarQube Scanner. Name: `SonarScannerCLI` (must match `Jenkinsfile`), uncheck "Install automatically", Installation directory: Path to your SonarScanner CLI installation (e.g., `/opt/sonar-scanner-7.1.0.4889-linux-x64`).
 
 ---
 
-## Stage 3: Application Development & Containerization
+### Stage 3: Application Development & Containerization
 
-**Goal:** Create a simple Flask web application and a `Dockerfile` to containerize it.
-
+**Goal:** Develop the Flask app with API, homepage, metrics, tests, and Dockerfile.
 **Steps:**
-
 1.  **Flask Application (`application/app.py`):**
-    * A basic Python Flask app that returns a greeting. (Code provided in previous discussions).
+    * Includes HTML homepage, REST API endpoints (`/api/v1/health`, `/api/v1/devices/...`), and Prometheus metrics exporter (`/metrics` endpoint).
 2.  **Python Dependencies (`application/requirements.txt`):**
-    * Lists `Flask`.
-3.  **Dockerfile (`application/Dockerfile`):**
-    * Uses a Python base image (e.g., `python:3.9-slim`).
-    * Copies application code and installs dependencies.
-    * Exposes the application port (e.g., 5000).
-    * Sets the `CMD` to run the Flask application.
-    * (Corrected `ENV APP_VERSION="1.0"` format).
-
----
-
-## Stage 4: Kubernetes Manifests
-
-**Goal:** Define Kubernetes resources to deploy and expose the application.
-
-**Steps:**
-
-1.  **Deployment Manifest (`kubernetes/deployment.yaml`):**
-    * Defines a `Deployment` to manage application replicas.
-    * Specifies the Docker image to use (placeholder `your-dockerhub-username/my-simple-app:latest`, which Jenkins will update).
-    * Sets container ports and labels.
-    * Includes optional environment variables and probes.
-2.  **Service Manifest (`kubernetes/service.yaml`):**
-    * Defines a `Service` of type `LoadBalancer` to expose the application externally via an AWS Load Balancer.
-    * Maps the service port (e.g., 80) to the container's target port (e.g., 5000).
-    * Uses a selector to link to the pods created by the Deployment.
-
----
-
-## Stage 5: Jenkins CI/CD Pipeline (`Jenkinsfile`)
-
-**Goal:** Automate the build, test (not implemented in this basic version), and deployment process.
-
-**Steps:**
-
-1.  **Create `Jenkinsfile`:**
-    * A declarative pipeline script located in the root of your Git repository.
-2.  **Define Environment Variables:**
-    * `AWS_REGION`, `EKS_CLUSTER_NAME` (ensure this matches your Terraform output, e.g., `my-dev-eks-cluster`), `DOCKERHUB_USERNAME`, `APP_NAME`.
-3.  **Pipeline Stages:**
-    * **Initialize:** Sets dynamic environment variables like `IMAGE_TAG` and `DOCKER_IMAGE_NAME`.
-    * **(Implicit Checkout):** Jenkins automatically checks out the repository containing the `Jenkinsfile` when "Pipeline script from SCM" is used.
-    * **Build Docker Image:** Builds the Docker image using the `Dockerfile` in the `application/` directory and tags it.
-    * **Login to Docker Hub:** Uses stored credentials to log in to Docker Hub.
-    * **Push Docker Image to Docker Hub:** Pushes the tagged image and a `latest` tag.
-    * **Configure Kubectl:** Runs `aws eks update-kubeconfig` to allow `kubectl` to communicate with the EKS cluster. (This relies on the EC2 instance IAM role for AWS credentials).
-    * **Update Kubernetes Manifests:** Uses `sed` to replace the image placeholder in `kubernetes/deployment.yaml` with the newly built image tag.
-    * **Deploy to EKS:** Uses `kubectl apply` to deploy the `deployment.yaml` and `service.yaml`. Includes `kubectl rollout status` to monitor deployment.
-4.  **Post Actions:**
-    * Logs out of Docker Hub.
-    * Provides success/failure messages.
-5.  **Jenkins Job Configuration:**
-    * Create a new "Pipeline" job in Jenkins.
-    * Configure "Pipeline script from SCM".
-    * Point to your Git repository URL and specify the branch (e.g., `main`).
-    * Script Path: `Jenkinsfile`.
-
----
-
-## Stage 6: GitHub Webhook for Continuous Integration
-
-**Goal:** Automatically trigger the Jenkins pipeline on code pushes to GitHub.
-
-**Steps:**
-
-1.  **Jenkins Job Configuration:**
-    * In your Jenkins pipeline job, go to "Configure".
-    * Under "Build Triggers", check **"GitHub hook trigger for GITScm polling"**.
-    * Save the configuration.
-2.  **GitHub Repository Webhook Setup:**
-    * Go to your GitHub repository -> Settings -> Webhooks -> Add webhook.
-    * **Payload URL:** `http://<YOUR_JENKINS_EC2_PUBLIC_IP>:8080/github-webhook/` (ensure Jenkins is accessible from the internet on this port).
-    * **Content type:** `application/json`.
-    * **Secret:** (Optional) A secret token for verification.
-    * **Events:** Select "Just the push event."
-    * Ensure "Active" is checked.
-    * Add the webhook.
-3.  **Test Webhook:**
-    * GitHub will send a ping. Check "Recent Deliveries" for a successful response (200 OK).
-    * Make a code change to your repository, commit, and push to the configured branch.
-    * Verify that the Jenkins job automatically starts.
-
----
-
-## Running the Project (Summary)
-
-1.  Clone this repository.
-2.  Provision AWS infrastructure using Terraform (`terraform apply`).
-3.  Set up the Jenkins server on an EC2 instance with all tools and IAM role.
-4.  Configure the Jenkins pipeline job, pointing to this Git repository.
-5.  (Optional but recommended) Configure the GitHub webhook.
-6.  Push a code change (if webhook is set up) or manually trigger the Jenkins job.
-
-## Accessing the Application
-
-1.  Once the Jenkins pipeline successfully completes the "Deploy to EKS" stage:
-2.  Wait a few minutes for the AWS Load Balancer to be provisioned.
-3.  Get the external DNS name of the LoadBalancer:
-    ```bash
-    kubectl get service my-simple-app-service -o wide
-    ```
-    (Look for the `EXTERNAL-IP` value).
-4.  Open this DNS name in your web browser. You should see your Flask application's greeting.
-
----
-
-## Cleaning Up
-
-**Crucial to avoid ongoing AWS charges!**
-
-1.  **Destroy Terraform Infrastructure:**
-    ```bash
-    cd terraform
-    terraform destroy
-    ```
-    Type `yes` when prompted. This will delete the EKS cluster, node groups, and associated IAM roles.
-2.  **Terminate Jenkins EC2 Instance:** Go to the AWS EC2 console and terminate the instance running Jenkins.
-3.  **Delete Docker Hub Images (Optional):** Log in to Docker Hub and delete the images if desired.
-4.  **Remove GitHub Webhook (Optional).**
-
----------------------------------------------------------------------------------------------------
-                                  ** ENHANCEMENT **
----------------------------------------------------------------------------------------------------
-
-## Stage 1: Infrastructure as Code (IaC) with Terraform on AWS
-
-**Goal:** Provision an AWS EKS cluster and necessary IAM roles using Terraform.
-
-**(Steps remain the same as previous README: Navigate to `terraform/`, `terraform init`, `terraform plan`, `terraform apply`)**
-
----
-
-## Stage 2: Jenkins Server Setup on AWS EC2
-
-**Goal:** Set up an EC2 instance to act as the Jenkins CI/CD server, equipped with all necessary tools.
-
-**Steps:**
-
-1.  **Launch an EC2 Instance:** (Details same as previous README, ensure IAM Role for EKS access).
-2.  **Run Setup Script or Manually Install:**
-    * Tools to install: Java (OpenJDK 17), Jenkins, Docker, AWS CLI v2, kubectl, and **Trivy**.
-    * (Refer to `install_jenkins_docker_ubuntu.sh` or previous instructions for installing these tools).
-    * Ensure the `jenkins` user is added to the `docker` group.
-3.  **Initial Jenkins Setup:** (Access Jenkins, initial password, install suggested plugins, create admin user).
-4.  **Configure Jenkins Credentials:** (Add Docker Hub credentials with ID `dockerhub-credentials`).
-
----
-
-## Stage 3: Application Development & Containerization
-
-**Goal:** Develop the Flask web application with enhanced API, HTML homepage, Prometheus metrics, and a `Dockerfile`.
-
-**Steps:**
-
-1.  **Flask Application (`application/app.py`):**
-    * Develop a Python Flask app with:
-        * An informative HTML homepage at the root (`/`).
-        * REST API endpoints (e.g., `/api/v1/health`, `/api/v1/devices/...`).
-        * Instrumentation using `prometheus_flask_exporter` to expose a `/metrics` endpoint.
-2.  **Python Dependencies (`application/requirements.txt`):**
-    * Include `Flask`, `Werkzeug` (pinned to a compatible version like `2.3.8`), and `prometheus_flask_exporter`.
+    * Lists `Flask`, `Werkzeug==2.3.8` (pinned version), `prometheus_flask_exporter`.
 3.  **Unit Tests (`application/test_app.py`):**
-    * Write unit tests using Python's `unittest` module to cover the API endpoints.
+    * `unittest` based tests for API endpoints.
 4.  **Dockerfile (`application/Dockerfile`):**
-    * Standard Dockerfile to containerize the Flask application.
+    * Containerizes the Flask application.
 
 ---
 
-## Stage 4: Kubernetes Manifests (Application & Monitoring)
+### Stage 4: SonarQube Server Setup & Project Configuration
 
-**Goal:** Define Kubernetes resources to deploy the application and the monitoring stack.
-
+**Goal:** Run SonarQube server and prepare project for analysis.
 **Steps:**
+1.  **Run SonarQube Server (Docker on Jenkins EC2):**
+    ```bash
+    # Ensure Docker is running on the Jenkins EC2 instance
+    docker volume create sonarqube_data
+    docker volume create sonarqube_logs
+    docker volume create sonarqube_extensions
 
+    docker run -d --name sonarqube \
+        -p 9000:9000 \
+        -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true \
+        -v sonarqube_data:/opt/sonarqube/data \
+        -v sonarqube_logs:/opt/sonarqube/logs \
+        -v sonarqube_extensions:/opt/sonarqube/extensions \
+        sonarqube:9.9.5-community # Or your chosen version
+    ```
+    * Access UI: `http://<JENKINS_EC2_IP>:9000` (login: admin/admin, then change password).
+2.  **Generate SonarQube Authentication Token:**
+    * In SonarQube UI: User Avatar -> My Account -> Security -> Generate Token (e.g., `jenkins_scanner_token`). Save this token to add to Jenkins credentials as `sonarqube-auth-token`.
+3.  **Create `sonar-project.properties`:**
+    * In the root of your Git repository, create `sonar-project.properties` defining `sonar.projectKey`, `sonar.projectName`, `sonar.sources=application`, `sonar.language=py`, `sonar.exclusions=**/venv/**, **/.venv/**`.
+
+---
+
+### Stage 5: Kubernetes Manifests (Application & Monitoring)
+
+**Goal:** Define Kubernetes resources for the application and monitoring stack.
+**Steps:**
 1.  **Application Manifests (`kubernetes/`):**
-    * **`deployment.yaml`**: Defines the Deployment for the Flask application. Ensure it has appropriate labels (e.g., `app: my-simple-app`) for service discovery and Prometheus scraping.
-    * **`service.yaml`**: Defines the Service (e.g., type `LoadBalancer`) to expose the Flask application.
+    * `deployment.yaml`: For the Flask app. Ensure label `app: my-simple-app`.
+    * `service.yaml`: Type `LoadBalancer` for the Flask app.
 2.  **Monitoring Stack Manifests (`monitoring/`):**
-    * **Prometheus (`monitoring/prometheus/prometheus-setup.yaml`):**
-        * Includes Namespace, ServiceAccount, ClusterRole, ClusterRoleBinding for Prometheus.
-        * ConfigMap for `prometheus.yml` defining scrape jobs (including one to scrape the Flask app based on labels/annotations and the `/metrics` endpoint on port 5000).
-        * Deployment for the Prometheus server.
-        * Service (e.g., type `NodePort`) to expose Prometheus.
-    * **Grafana (`monitoring/grafana/grafana-setup.yaml`):**
-        * Deployment for the Grafana server.
-        * Service (e.g., type `NodePort`) to expose Grafana.
-        * Uses `emptyDir` for Grafana storage in this project (for persistence, a PVC would be used).
-3.  **Apply Monitoring Manifests (Manual Step after EKS is up):**
+    * **Prometheus (`monitoring/prometheus/prometheus-setup.yaml`):** Namespace, RBAC, ConfigMap for `prometheus.yml` (scrape job for `app: my-simple-app` on port 5000, path `/metrics`), Prometheus Deployment, and Service (type `NodePort`).
+    * **Grafana (`monitoring/grafana/grafana-setup.yaml`):** Grafana Deployment and Service (type `NodePort`). Uses `emptyDir` for storage.
+3.  **Apply Monitoring Manifests (Manual step after EKS is up):**
     ```bash
     kubectl apply -f monitoring/prometheus/prometheus-setup.yaml
     kubectl apply -f monitoring/grafana/grafana-setup.yaml
     ```
-    Verify pods in the `monitoring` namespace are running.
+    Verify pods in `monitoring` namespace are running: `kubectl get all -n monitoring`.
 
 ---
 
-## Stage 5: Jenkins CI/CD Pipeline (`Jenkinsfile`)
+### Stage 6: Jenkins CI/CD Pipeline (`Jenkinsfile`)
 
-**Goal:** Automate the build, test, security scan, deployment, and smoke test process.
+**Goal:** Automate the entire build-to-deploy lifecycle.
+**Key Pipeline Stages (refer to `jenkinsfile_with_sonarqube_final`):**
+1.  **(Implicit SCM Checkout)**
+2.  **Run Unit Tests:** Installs `requirements.txt` in a venv and runs `python3 -m unittest discover`.
+3.  **SonarQube Analysis:** Uses `withSonarQubeEnv` and `tool 'SonarScannerCLI'` to run `sonar-scanner`.
+4.  **Quality Gate Check:** (Informational stage; full implementation requires SonarQube webhooks and Jenkins Quality Gate plugin).
+5.  **Build Docker Image:** Builds and tags the application image.
+6.  **Scan Docker Image with Trivy:** Scans image for `HIGH,CRITICAL` vulnerabilities (`trivy image --exit-code 0 ...`).
+7.  **Login to Docker Hub.**
+8.  **Push Docker Image to Docker Hub.**
+9.  **Configure Kubectl:** Runs `aws eks update-kubeconfig`.
+10. **Update Kubernetes Manifests:** Uses `sed` to set the image tag in `deployment.yaml`.
+11. **Deploy to EKS:** Applies application manifests and waits for rollout.
+12. **Smoke Test Application:** Executes `smoke_test.sh` against the LoadBalancer URL after a delay.
 
-**Steps:**
-
-1.  **Create `Jenkinsfile`:** (Declarative pipeline script in the project root).
-2.  **Define Environment Variables:** (`AWS_REGION`, `EKS_CLUSTER_NAME`, `DOCKERHUB_USERNAME`, `APP_NAME`, `IMAGE_TAG`, `DOCKER_IMAGE_NAME`, `APP_SERVICE_NAME`, `APP_NAMESPACE`).
-3.  **Pipeline Stages:**
-    * **(Implicit Checkout):** Code is checked out from Git.
-    * **Run Unit Tests:** Executes `python3 -m unittest discover` within a virtual environment in the `application` directory. Installs dependencies from `requirements.txt` into the venv first.
-    * **Build Docker Image:** Builds the Docker image and tags it.
-    * **Scan Docker Image with Trivy:** Scans the built image for `HIGH,CRITICAL` vulnerabilities using `trivy image --exit-code 0 ...`. (Currently reports, doesn't fail build).
-    * **Login to Docker Hub:** Logs in using stored credentials.
-    * **Push Docker Image to Docker Hub:** Pushes the tagged image.
-    * **Configure Kubectl:** Runs `aws eks update-kubeconfig`.
-    * **Update Kubernetes Manifests:** Uses `sed` to update `kubernetes/deployment.yaml` with the new image tag.
-    * **Deploy to EKS:** Applies `kubernetes/deployment.yaml` and `kubernetes/service.yaml`. Waits for rollout.
-    * **Smoke Test Application:** After a delay, retrieves the LoadBalancer URL and executes `smoke_test.sh` against the live application.
-4.  **Jenkins Job Configuration:** (Create "Pipeline" job, configure "Pipeline script from SCM").
+**Jenkins Job Configuration:** Create "Pipeline" job, "Pipeline script from SCM", point to Git repo, branch (`main`), Script Path: `Jenkinsfile`.
 
 ---
 
-## Stage 6: GitHub Webhook for Continuous Integration
+### Stage 7: GitHub Webhook for Continuous Integration
 
 **Goal:** Automatically trigger the Jenkins pipeline on code pushes.
-
-**(Steps remain the same as previous README: Configure "GitHub hook trigger" in Jenkins job, Add webhook in GitHub repo settings pointing to `http://<JENKINS_IP>:8080/github-webhook/`)**
+**Steps:**
+1.  **Jenkins Job:** Enable "GitHub hook trigger for GITScm polling" in Build Triggers.
+2.  **GitHub Repo:** Settings -> Webhooks -> Add webhook.
+    * Payload URL: `http://<YOUR_JENKINS_EC2_PUBLIC_IP>:8080/github-webhook/`
+    * Content type: `application/json`.
+    * Events: "Just the push event."
+    * Ensure "Active" is checked.
 
 ---
 
-## Running the Project (Summary)
+## Running the Full Project
 
-1.  Clone this repository.
-2.  Provision AWS infrastructure using Terraform (`terraform/terraform apply`).
-3.  Set up the Jenkins server on an EC2 instance with all tools (Java, Jenkins, Docker, AWS CLI, kubectl, Trivy) and the necessary IAM role.
-4.  Apply Kubernetes manifests for Prometheus and Grafana:
-    ```bash
-    kubectl apply -f monitoring/prometheus/prometheus-setup.yaml
-    kubectl apply -f monitoring/grafana/grafana-setup.yaml
-    ```
-5.  Configure the Jenkins pipeline job, pointing to this Git repository.
-6.  Configure the GitHub webhook.
-7.  Push a code change or manually trigger the Jenkins job.
+1.  Clone repository.
+2.  Provision EKS with Terraform (`terraform/`).
+3.  Set up Jenkins server on EC2 using `install_jenkins_server_tools.sh` (or manual steps).
+4.  Run SonarQube server on Jenkins EC2 using Docker.
+5.  Configure Jenkins (Credentials, SonarQube Server, SonarScanner Tool).
+6.  Apply Prometheus & Grafana manifests to EKS (`monitoring/`).
+7.  Create and configure the Jenkins pipeline job.
+8.  Configure GitHub webhook.
+9.  Push a code change to trigger the pipeline, or run manually.
 
-## Accessing Services
+---
 
-* **Application:**
-    * Get the LoadBalancer DNS: `kubectl get service my-simple-app-service -n <your-app-namespace> -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`
-    * Access via browser: `http://<LOADBALANCER_DNS>/`
-    * Metrics endpoint: `http://<LOADBALANCER_DNS>/metrics`
-* **Prometheus UI:**
+## Accessing Services & Key Information
+
+* **Application Homepage:** `http://<LOADBALANCER_DNS>/`
+    * Get LoadBalancer DNS: `kubectl get service my-simple-app-service -n default -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`
+* **Application Metrics:** `http://<LOADBALANCER_DNS>/metrics`
+* **SonarQube UI:** `http://<JENKINS_EC2_IP>:9000` (Login: `admin`/your_changed_password)
+* **Prometheus UI:** `http://<EKS_NODE_IP>:<PROMETHEUS_NODE_PORT>`
     * Get NodePort: `kubectl get svc prometheus-service -n monitoring`
-    * Access via browser: `http://<EKS_NODE_IP>:<PROMETHEUS_NODE_PORT>`
-* **Grafana UI:**
+* **Grafana UI:** `http://<EKS_NODE_IP>:<GRAFANA_NODE_PORT>`
     * Get NodePort: `kubectl get svc grafana-service -n monitoring`
-    * Access via browser: `http://<EKS_NODE_IP>:<GRAFANA_NODE_PORT>` (Default login: admin/admin, then change password).
-    * Configure Prometheus as a data source in Grafana: `http://prometheus-service.monitoring.svc.cluster.local:9090`.
+    * Default Login: `admin`/`admin` (change on first login).
+    * **Prometheus Data Source URL in Grafana:** `http://prometheus-service.monitoring.svc.cluster.local:9090`
+
+### Example Grafana Dashboard Panels & Metrics (PromQL)
+
+When creating a dashboard in Grafana with Prometheus as the data source:
+
+1.  **HTTP Request Rate (Requests per Second):**
+    * Query: `sum(rate(flask_http_request_total[1m])) by (job)`
+    * Visualization: Time series
+    * Unit: Requests per second (req/s)
+2.  **Average API Latency:**
+    * Query: `sum(rate(flask_http_request_duration_seconds_sum[5m])) by (job) / sum(rate(flask_http_request_duration_seconds_count[5m])) by (job)`
+    * Visualization: Time series
+    * Unit: seconds (s)
+3.  **HTTP 5xx Error Rate (Server Errors):**
+    * Query: `sum(rate(flask_http_request_total{status=~"5.."}[1m])) by (job)`
+    * Visualization: Time series
+    * Unit: Errors per second (err/s)
+4.  **Request Count by HTTP Method (Last Hour):**
+    * Query: `sum(increase(flask_http_request_total[1h])) by (method)`
+    * Visualization: Stat or Pie chart
+    * Calculation (for Stat/Pie): Total
+5.  **Active Alerts (if configured in Prometheus):**
+    * Query: `ALERTS`
+    * Visualization: Stat or Table
 
 ---
 
-## Cleaning Up
+## Cleaning Up (Important!)
 
-**Crucial to avoid ongoing AWS charges!**
-
-1.  **Delete Application and Monitoring Resources from EKS:**
+1.  **Delete Kubernetes Resources:**
     ```bash
-    kubectl delete -f kubernetes/ # Deletes app deployment and service
+    kubectl delete -f kubernetes/
     kubectl delete -f monitoring/grafana/grafana-setup.yaml
     kubectl delete -f monitoring/prometheus/prometheus-setup.yaml
-    kubectl delete namespace monitoring # If it's empty
+    kubectl delete namespace monitoring # If it's empty and you created it
     ```
-2.  **Destroy Terraform Infrastructure:**
+2.  **Stop and Remove SonarQube Docker Container:**
     ```bash
-    cd terraform
-    terraform destroy
+    docker stop sonarqube
+    docker rm sonarqube
+    # Optionally remove volumes if you don't need the data:
+    # docker volume rm sonarqube_data sonarqube_logs sonarqube_extensions
     ```
-3.  **Terminate Jenkins EC2 Instance.**
-4.  **Delete Docker Hub Images (Optional).**
-5.  **Remove GitHub Webhook (Optional).**
+3.  **Destroy Terraform Infrastructure:** `cd terraform && terraform destroy`
+4.  **Terminate Jenkins EC2 Instance.**
+5.  **Delete Docker Hub Images (Optional).**
+6.  **Remove GitHub Webhook (Optional).**
 
 ---
+This comprehensive README now covers all the stages and enhancements of your project.
 
-## Future Enhancements
+## Project Overview
 
-* Implement more sophisticated testing (integration, end-to-end).
-* Configure Trivy to fail the pipeline based on vulnerability severity.
-* Use a more robust solution for updating Kubernetes manifests (e.g., Kustomize, Helm).
-* Implement robust secrets management (e.g., HashiCorp Vault, AWS Secrets Manager).
-* Create more detailed Grafana dashboards.
-* Use PersistentVolumeClaims for Prometheus and Grafana data.
-* Automate deployment of Prometheus/Grafana via Jenkins or GitOps.
-* Implement more advanced deployment strategies (blue/green, canary).
-* Use a dedicated container registry like AWS ECR.
-* Parameterize the Jenkins pipeline.
-* Secure Jenkins (e.g., SSL, matrix-based security).
 
+
+The core objective is to showcase a robust DevOps workflow...
+
+
+![Application Homepage Showcase](images/app-homepage.png) 
+![Application Homepage Showcase](images/cicd-pipeline.png)
+![Application Homepage Showcase](images/grafana-dash.png)
+![Application Homepage Showcase](images/sonar-analysis.png)
+![Application Homepage Showcase](images/grafana-dash2.png)
+![Application Homepage Showcase](images/sonar-code-smell.png)
+![Application Homepage Showcase](images/grafana-dash3.png)
+
+
+**Enhancements include:**
+
+* ...
