@@ -45,7 +45,7 @@ The objective is to showcase a robust DevOps workflow encompassing:
 * GitHub account and a repository for this project.
 * Docker Hub account.
 * Text editor or IDE (e.g., VS Code).
-
+### aws eks update-kubeconfig --region us-east-1 --name my-dev-eks-cluster
 ## Project Structure
 
 
