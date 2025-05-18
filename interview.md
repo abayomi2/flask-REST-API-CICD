@@ -1,3 +1,158 @@
+# Interview Narrative & Summary: Comprehensive DevOps Project
+
+This document outlines how to present your end-to-end DevOps project during an interview, structured using the STAR method, followed by a bullet-point summary.
+
+## I. Project Story (STAR Method)
+
+### Situation
+
+"To prepare for a DevOps Engineer role like this one, which emphasizes delivering robust REST APIs, CI/CD automation, cloud infrastructure management, security, and monitoring, I decided to proactively build a comprehensive, hands-on project. My aim was to simulate a real-world scenario, demonstrating my ability to integrate various DevOps tools and practices to create a fully automated, observable, and secure application lifecycle."
+
+### Task
+
+"My primary goal was to design, implement, and orchestrate an end-to-end CI/CD pipeline. This pipeline would take a Python Flask web application from source code to a live, monitored deployment on a Kubernetes cluster (AWS EKS). The key objectives included:
+* Automating infrastructure provisioning using Infrastructure as Code.
+* Ensuring code quality and security through automated testing and scanning.
+* Implementing a full CI/CD workflow for builds, image management, and deployments.
+* Establishing a monitoring and observability stack.
+* Securing sensitive information used within the pipeline.
+* Validating deployments automatically."
+
+### Action
+
+"I systematically built the project in several integrated stages, leveraging a range of modern DevOps tools and AWS services:
+
+1.  **Infrastructure as Code (IaC) with Terraform:**
+    * I authored Terraform scripts to define and reliably provision the entire AWS EKS cluster, including VPC configurations (using the default VPC and filtering subnets), IAM roles for the EKS control plane and node groups with necessary permissions, and the EKS cluster itself with a managed node group. This ensured the infrastructure was version-controlled and repeatable.
+    * `kubectl` was configured locally using `aws eks update-kubeconfig --region <region> --name <cluster-name>` to interact with the new cluster.
+
+2.  **Jenkins CI/CD Server Setup on AWS EC2:**
+    * I launched an Ubuntu EC2 instance to host the Jenkins server.
+    * To ensure a complete and correct build environment, I developed and used a comprehensive bash script (`install_jenkins_server_tools.sh`) to automate the installation of: Java (OpenJDK 17), Jenkins, Docker Engine, AWS CLI v2, `kubectl`, Python 3 (with `pip` and `venv`), Trivy for image scanning, and the SonarScanner CLI.
+    * The `jenkins` user was added to the `docker` group.
+
+3.  **Application Development & Containerization (Python Flask):**
+    * I developed a Python Flask application featuring:
+        * An informative HTML homepage (listing project tools and my name).
+        * Multiple REST API endpoints (e.g., `/api/v1/health`, `/api/v1/devices/...`) simulating an end-user device integration service.
+        * Instrumentation using `prometheus_flask_exporter` to expose application metrics on a `/metrics` endpoint.
+    * I wrote unit tests for the API endpoints using Python's `unittest` module, stored in `application/test_app.py`.
+    * The application was containerized using a `Dockerfile`.
+
+4.  **SonarQube Setup & Integration (Static Code Analysis):**
+    * I ran a SonarQube Community Edition server using Docker on the Jenkins EC2 instance, with persistent volumes for data, logs, and extensions (`docker run -d --name sonarqube -p 9000:9000 ... sonarqube:9.9.5-community`).
+    * The SonarScanner CLI was installed on the Jenkins server using a dedicated script.
+    * I configured Jenkins (Manage Jenkins -> Configure System & Global Tool Configuration) with the SonarQube server URL (`http://localhost:9000`) and a SonarScanner tool definition.
+    * A `sonar-project.properties` file was created in the project root to define the project key, name, and source directories for analysis.
+
+5.  **AWS Secrets Manager Integration:**
+    * To manage sensitive data securely, I used AWS Secrets Manager.
+    * I created a secret (e.g., `devops_project/jenkins/api_key`) using the AWS CLI: `aws secretsmanager create-secret --name "..." --secret-string "..."`.
+    * I then developed a bash script (`automate_iam_role_ec2_secrets_script`) to:
+        * Create a new IAM Role (`JenkinsEC2InstanceRoleV2`) suitable for the Jenkins EC2 instance.
+        * Create an IAM Instance Profile and associate it with the role.
+        * Attach this Instance Profile to the Jenkins EC2 instance (`i-0b59a091a868aa50c`).
+        * Create a specific IAM policy (`JenkinsEC2SecretsAccessPolicyV2`) granting `secretsmanager:GetSecretValue` permission to the specific secret ARN.
+        * Attach this policy to the `JenkinsEC2InstanceRoleV2`.
+    * This ensured the Jenkins pipeline could securely fetch secrets via the EC2 instance's IAM role.
+
+6.  **Monitoring Stack Deployment (Prometheus & Grafana on EKS):**
+    * I created Kubernetes manifests (`monitoring/prometheus/prometheus-setup.yaml` and `monitoring/grafana/grafana-setup.yaml`) to deploy Prometheus and Grafana into a dedicated `monitoring` namespace on EKS.
+    * Prometheus was configured with RBAC and a `prometheus.yml` (via ConfigMap) to scrape metrics from my Flask application pods (targeting the `/metrics` endpoint on port 5000, discovered via labels like `app: my-simple-app`).
+    * Grafana was deployed, and I later configured it to use Prometheus as a data source (`http://prometheus-service.monitoring.svc.cluster.local:9090`).
+
+7.  **Jenkins Pipeline Orchestration (`Jenkinsfile`):**
+    * I authored a declarative `Jenkinsfile` to automate the entire CI/CD workflow:
+        * **Checkout:** (Implicit) Fetches code from the GitHub repository.
+        * **Run Unit Tests:** Installs Python dependencies into a virtual environment and runs `unittest discover`.
+        * **Fetch Application Secret:** Retrieves the pre-configured secret from AWS Secrets Manager using the AWS CLI (leveraging the EC2 instance's IAM role).
+        * **SonarQube Analysis:** Executes `sonar-scanner` using the `withSonarQubeEnv` wrapper, sending results to the SonarQube server.
+        * **Quality Gate Check:** (Currently informational) A placeholder stage for future integration with SonarQube webhooks and the `waitForQualityGate` step.
+        * **Build Docker Image:** Builds the application image and tags it.
+        * **Scan Docker Image with Trivy:** Scans the image for `HIGH` and `CRITICAL` vulnerabilities (`trivy image --exit-code 0 ...`).
+        * **Login & Push to Docker Hub:** Pushes the image to Docker Hub.
+        * **Configure Kubectl:** Runs `aws eks update-kubeconfig` to set up EKS cluster access for the pipeline.
+        * **Update Kubernetes Manifests:** Uses `sed` to inject the new image tag into `kubernetes/deployment.yaml`.
+        * **Deploy to EKS:** Applies the application's Kubernetes manifests and waits for the deployment rollout.
+        * **Smoke Test Application:** Executes `smoke_test.sh` (which uses `curl`) against the application's LoadBalancer URL to verify key endpoints are responsive.
+    * The pipeline uses Jenkins credentials for Docker Hub and the SonarQube token.
+
+8.  **Continuous Integration with GitHub Webhooks:**
+    * I configured a webhook in the GitHub repository to point to Jenkins (`http://<JENKINS_IP>:8080/github-webhook/`).
+    * The Jenkins job was set with the "GitHub hook trigger for GITScm polling" to enable automated builds on pushes to the main branch.
+
+9.  **Grafana Dashboard Creation:**
+    * After deploying Prometheus and Grafana, I accessed Grafana and added Prometheus as a data source.
+    * I then created a basic dashboard with panels to visualize key metrics from the Flask application, such as:
+        * HTTP Request Rate (`sum(rate(flask_http_request_total[1m])) by (job)`)
+        * Average API Latency (`sum(rate(flask_http_request_duration_seconds_sum[5m])) by (job) / sum(rate(flask_http_request_duration_seconds_count[5m])) by (job)`)
+        * HTTP 5xx Error Rate (`sum(rate(flask_http_request_total{status=~"5.."}[1m])) by (job)`)
+
+### Result
+
+"The successful completion of this project resulted in a fully automated, end-to-end CI/CD pipeline capable of taking a Python Flask application from source code to a live, monitored, and validated deployment on AWS EKS.
+
+Key outcomes and demonstrated capabilities include:
+* **Automation:** Fully automated build, test, security scan, static analysis, deployment, and smoke testing processes.
+* **Infrastructure as Code:** Repeatable and version-controlled EKS cluster setup using Terraform.
+* **Containerization & Orchestration:** Effective use of Docker and Kubernetes (EKS) for deploying and managing the application.
+* **CI/CD Best Practices:** Implementation of unit testing, static code analysis (SonarQube), image vulnerability scanning (Trivy), and post-deployment smoke tests within the Jenkins pipeline.
+* **Observability:** A functional monitoring stack with Prometheus collecting application metrics and Grafana dashboards providing visualization, crucial for understanding application health and performance.
+* **Security:** Secure management of sensitive data using AWS Secrets Manager integrated into the pipeline, and awareness of image security through Trivy scans.
+* **Problem Solving:** Successfully troubleshot and resolved various integration challenges across different tools and services (e.g., IAM permissions, Jenkins agent dependencies, network configurations for Prometheus/Grafana NodePorts).
+* **Tool Proficiency:** Demonstrated hands-on experience with Jenkins, Terraform, Docker, Kubernetes, AWS (EKS, EC2, IAM, Secrets Manager), Prometheus, Grafana, SonarQube, Trivy, Git, and shell scripting.
+
+This project provides a strong foundation that mirrors the responsibilities of a DevOps Engineer, ready to be adapted and scaled for real-world applications and integrations."
+
+---
+
+## II. Bullet-Point Summary for Quick Reference
+
+* **Project Goal:** End-to-end CI/CD pipeline for a Flask REST API on AWS EKS.
+* **Core Technologies:**
+    * **IaC:** Terraform (for EKS cluster, IAM roles).
+    * **CI/CD Server:** Jenkins on AWS EC2.
+    * **Containerization:** Docker.
+    * **Image Registry:** Docker Hub.
+    * **Orchestration:** Kubernetes (AWS EKS).
+    * **Application:** Python Flask (REST API, HTML homepage, Prometheus metrics).
+    * **Version Control:** Git & GitHub (with webhooks).
+    * **Automated Testing:** Python `unittest`.
+    * **Static Code Analysis:** SonarQube (server via Docker, SonarScanner CLI).
+    * **Image Security:** Trivy.
+    * **Secrets Management:** AWS Secrets Manager (integrated via AWS CLI & IAM roles).
+    * **Monitoring:** Prometheus (for metrics collection) & Grafana (for dashboards).
+    * **Validation:** Bash script (`smoke_test.sh`) using `curl`.
+* **Key Pipeline Stages (`Jenkinsfile`):**
+    1.  Unit Tests
+    2.  Fetch Secrets (AWS Secrets Manager)
+    3.  SonarQube Analysis
+    4.  Quality Gate (Informational)
+    5.  Build Docker Image
+    6.  Scan Image (Trivy)
+    7.  Push to Docker Hub
+    8.  Configure `kubectl`
+    9.  Update K8s Manifests
+    10. Deploy to EKS
+    11. Smoke Test
+* **Key Outcomes & Skills Demonstrated:**
+    * Full automation of application lifecycle.
+    * Proficiency in core DevOps tools and AWS services.
+    * Implementation of testing, security, and monitoring best practices.
+    * Strong problem-solving and system integration capabilities.
+    * Secure handling of sensitive information.
+    * Creation of an observable and reliable deployment system.
+
+---
+
+Remember to deliver this story with confidence and enthusiasm, tailoring the emphasis based on the specific questions asked and the aspects of the job description you want to highlight most.
+
+
+
+
+
+
+
 # Interview Story: End-to-End DevOps Project (STAR Method)
 
 This document outlines how to present your comprehensive CI/CD and EKS deployment project during your interview, using the STAR method.
