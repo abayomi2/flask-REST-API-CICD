@@ -2,6 +2,9 @@
 
 This document outlines how to present your end-to-end DevOps project during an interview, structured using the STAR method, followed by a bullet-point summary.
 
+## Functionality of the APP
+This project focuses on creating a system that automates aspects of onboarding a new employee's devices (laptop, mobile) and provides a simple API for managing common device-related tasks. This directly addresses the job's core mission: "delivering REST APIs and integrations with external systems that empower our staff to seamlessly use their laptops, mobiles, and virtual devices" and "enhance our staff’s work experience, making it not only more efficient but also enjoyable."
+
 ## I. Project Story (STAR Method)
 
 ### Situation
